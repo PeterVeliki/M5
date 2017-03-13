@@ -1,7 +1,7 @@
 /*
 ****************************************************************************************************************************************************************************************
 *                                                                                                                                                                                      *
-* M5.mq4, verzija: 5, julij 2016                                                                                                                                                      *
+* M5.mq4                                                                                                                                                      *
 *                                                                                                                                                                                      *
 * Copyright Peter Novak ml., M.Sc.                                                                                                                                                     *
 ****************************************************************************************************************************************************************************************
@@ -21,8 +21,6 @@ extern double p;                     // Profitni cilj;
 extern int    samodejniPonovniZagon; // Samodejni ponovni zagon - DA(>0) ali NE(0). Če je po doseženem profitnem cilju ponovno dosežena začetna cena cz, se algoritem znova požene.
 extern int    n;                     // Številka iteracije. Če želimo zagon nove iteracije, potem podamo vrednost 0;
 extern double odmikSL;               // Odmik pri postavljanju stop-loss na break-even. Vrednost odmika prištejemo (buy) ali odštejemo (sell) ceni odprtja;
-extern double bravenE;               // Ročno podana vrednost začetne ravni za nakup - namesto izračuna na podlagi cz in d se v verziji 5 upošteva ta vrednost;
-extern double sravenE;               // Ročno podana vrednost začetne ravni za prodajo - namesto izračuna na podlagi cz in d se v verziji 5 upošteva ta vrednost;
 
 
 
@@ -110,7 +108,9 @@ int init()
   // ------------------ Konec bloka za klice servisnih funkcij -------------------------------------------------------------------------------
   
   maxIzpostavljenost = 0;
-  cenaObZagonu       = Bid;
+  cz = CenaIndikatorja();
+  cenaObZagonu = Bid;
+  
   if( n == 0 ) // Številka iteracije ni podana - začnemo novo iteracijo
   { 
     PonastaviVrednostiPodatkovnihStruktur();
@@ -120,7 +120,11 @@ int init()
       else                           
       { 
         Print( "M5-V", verzija, ":init:Odprta nova iteracija št. ", stevilkaIteracije ); n = stevilkaIteracije; 
-        if( cz == 0 ) { ShraniIteracijo( stevilkaIteracije, cenaObZagonu ); } else { ShraniIteracijo( stevilkaIteracije, cz ); }
+        ShraniIteracijo( stevilkaIteracije, cz );
+        NarisiCrto( clrRed, "zacetnaCena", cz );
+        NarisiCrto( clrGreen, "nakupnaRaven", ceneBravni[ 0 ] );
+        NarisiCrto( clrGreen, "prodajnaRaven", ceneSravni[ 0 ] );
+        ChartRedraw();
         stanje = S0; return( USPEH ); 
       }
   }
@@ -173,7 +177,12 @@ int start()
            "Izkupiček iteracije: ",      DoubleToString( izkupicekIteracije,  5 ), " \n",
            "Skupni izkupiček:",          DoubleToString( skupniIzkupicek,     5 ), " \n",
            "Razdalja do cilja: ",        DoubleToString( p - skupniIzkupicek, 5 ), " \n",
-           "Največja izpostavljenost: ", DoubleToString( maxIzpostavljenost,  5 ) );
+           "Največja izpostavljenost: ", DoubleToString( maxIzpostavljenost,  5 ), " \n",
+           "ceneBravni[0]: ",            DoubleToString( ceneBravni[0],       5 ), " \n",
+           "ceneSravni[0]: ",            DoubleToString( ceneSravni[0],       5 ), " \n",
+           "braven: ",                   braven,                                   " \n",
+           "sraven: ",                   sraven );
+           
   
   // če vrsta pozicij za ponastavljanje stop loss-ov ni prazna, poskusimo ponastaviti stop-loss-e
   if( kslVrsta > 0 ) { PreveriSL(); }
@@ -189,6 +198,35 @@ int start()
 * Urejene po abecednem vrstnem redu                                                                                                                                                    *
 ****************************************************************************************************************************************************************************************
 */
+
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: CenaIndikatorja()
+-------------------------------------
+(o) Funkcionalnost: Vrne trenutno vrednost indikatorja supertrend.  
+(o) Zaloga vrednosti: cena
+(o) Vhodni parametri: / 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+double CenaIndikatorja()
+{
+    double BuyLine;
+    double SellLine;
+
+    BuyLine  = iCustom( NULL, 0,"sa_MTEI_Supertrend", 0, 1 );
+    SellLine = iCustom( NULL, 0,"sa_MTEI_Supertrend", 1, 1 );
+
+    if( SellLine != EMPTY_VALUE ) 
+    { 
+      return ( SellLine );
+    }
+    if( BuyLine != EMPTY_VALUE )
+    {
+      return ( BuyLine );
+    }
+    Print( "CenaIndikatorja::Napaka - obe vrednosti indikatorja sta prazni!" );    
+    return ( NAPAKA );
+} // konec CenaIndikatorja
 
 
 
@@ -319,6 +357,41 @@ bool IzpolnjenPogojZaPonovniZagon()
   else         { if( Bid >= cz ) { return( true ); } else { return( false ); } }
   Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzpolnjenPogojZaPonovniZagon:OPOZORILO: Ta stavek se ne bi smel nikoli izvesti - preveri delovanje algoritma." );
 } // IzpolnjenPogojZaPonovniZagon
+
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: IzpolnjenPogojZaPremikRavni
+-------------------------------------
+(o) Funkcionalnost: preveri ali je izpolnjen pogoj, da prestavimo raven za 1 navzgor ali navzdol. Pogoj za premik je izpolnjen, ko je cena indikatorja Supertrend presegla sredino med 
+    naslednjima dvema nivojema v smeri navzgor ali navzdol.
+(o) Zaloga vrednosti:
+  (-) NEVELJAVNO: v primeru, ko pogoj za premik ni izpolnjen;
+  (-) OP_BUY: v primeru, ko je potrebno premakniti ravni navzgor;
+  (-) OP_SELL: v primeru, ko je potrebno premakniti ravni navzdol.
+(o) Vhodni parametri: /
+  (-) uporablja globalno spremenljivko cz
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+int IzpolnjenPogojZaPremikRavni()
+{
+   double mejnaCenaBuy;
+   double mejnaCenaSell;
+   double cenaIndikatorja;
+   
+   // izračunam mejne cene za premik ravni
+   mejnaCenaBuy    = ( ceneBravni[1] + ceneBravni[0] )/2;
+   mejnaCenaSell   = ( ceneSravni[1] + ceneSravni[0] )/2;
+   
+   // shranim ceno indikatorja, ker jo bom potreboval večkrat
+   cenaIndikatorja = CenaIndikatorja();
+   
+   // preverim ali je izpolnjen kateri od pogojev za premik ravni
+   if( cenaIndikatorja > mejnaCenaBuy  ) { return( OP_BUY ); }
+   if( cenaIndikatorja < mejnaCenaSell ) { return( OP_SELL ); }
+   
+   // v primeru da ni bil izpolnjen noben od pogojev vrnem 0
+   return( NEVELJAVNO );
+} // IzpolnjenPogojZaPremikRavni
 
 
 
@@ -495,12 +568,58 @@ FUNKCIJA: OsveziCeneRavni( c )
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int OsveziCeneRavni( double c )
 {
-  if( c == 0 ) { c = cenaObZagonu; }
-  ceneBravni[ 0 ] = bravenE; Print( ":[", stevilkaIteracije, "]:", "Nakupna raven 0: ",  DoubleToString( ceneBravni[ 0 ], 5 ) );
-  ceneSravni[ 0 ] = sravenE; Print( ":[", stevilkaIteracije, "]:", "Prodajna raven 0: ", DoubleToString( ceneSravni[ 0 ], 5 ) );
+  ceneBravni[ 0 ] = c + d/2; Print( ":[", stevilkaIteracije, "]:", "Nakupna raven 0: ",  DoubleToString( ceneBravni[ 0 ], 5 ) );
+  ceneSravni[ 0 ] = c - d/2; Print( ":[", stevilkaIteracije, "]:", "Prodajna raven 0: ", DoubleToString( ceneSravni[ 0 ], 5 ) );
   for( int i = 1; i < MAX_POZ; i++ ) { ceneBravni[ i ] = ceneBravni[ i-1 ] + r; ceneSravni[ i ] = ceneSravni[ i-1 ] - r; }
   return( USPEH );
 } // OsveziCeneRavni
+
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: PoisciNajvecVrednoPozicijo
+------------------------------------
+(o) Funkcionalnost: Funkcija poišče največ vredno pozicijo na nasprotni strani. 
+ (-) če je podan parameter OP_BUY,  potem poišče nakupno  pozicijo v polju spozicije. Vrne tisto z najvišjim indeksom. Če je ne najde, potem vrne 0.
+ (-) če je podan parameter OP_SELL, potem poišče prodajno pozicijo v polju bpozicije. Vrne tisto z najvišjim indeksom. Če je ne najde, potem vrne 0.
+(o) Zaloga vrednosti: 
+ (-) id pozicije: če je pozicija bila najdena
+ (-) 0: pozicija ni bila najdena
+(o) Vhodni parametri: OP_BUY ali OP_SELL. 
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+int PoisciNajvecVrednoPozicijo( int smer )
+{
+   int i;
+   int selectRezultat;
+   int pozicija;
+   
+   pozicija = 0;
+   if( smer == OP_BUY )
+   {
+     for( i = 0; i < MAX_POZ; i++ )
+     {
+       if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) )
+       {
+         selectRezultat = OrderSelect( spozicije[ i ], SELECT_BY_TICKET );
+         if( selectRezultat == false  ) { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":PoisciNajvecVrednoPozicijo:NAPAKA: Pozicije ", spozicije[ i ], " ni bilo mogoče najti. Preveri pravilnost delovanja algoritma." ); return( NAPAKA ); }
+         if( OrderType()    == OP_BUY ) { pozicija = spozicije[ i ]; }
+       }
+     }
+   }   
+   else // smer == OP_SELL
+   {
+     for( i = 0; i < MAX_POZ; i++ )
+     {
+       if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) )
+       {
+         selectRezultat = OrderSelect( bpozicije[ i ], SELECT_BY_TICKET );
+         if( selectRezultat == false  )  { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":PoisciNajvecVrednoPozicijo:NAPAKA: Pozicije ", bpozicije[ i ], " ni bilo mogoče najti. Preveri pravilnost delovanja algoritma." ); return( NAPAKA ); }
+         if( OrderType()    == OP_SELL ) { pozicija = bpozicije[ i ]; }
+       }
+     }
+   }
+   return( pozicija );
+} // PoisciNajvecVrednoPozicijo
 
 
 
@@ -563,8 +682,8 @@ int PostaviSL( int id, double odmik )
     Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":PostaviSL:NAPAKA: Pozicije ", id, " ni bilo mogoče najti. Preveri pravilnost delovanja algoritma." ); return( NAPAKA ); 
   }
   
-  if( OrderType() == OP_BUY ) { if( OrderStopLoss() >= OrderOpenPrice() ) { return( USPEH ); } else { ciljniSL = OrderOpenPrice() + odmik; } } 
-  else                        { if( OrderStopLoss() <= OrderOpenPrice() ) { return( USPEH ); } else { ciljniSL = OrderOpenPrice() - odmik; } }
+  if( OrderType() == OP_BUY ) { if( OrderStopLoss() == OrderOpenPrice() + odmik ) { return( USPEH ); } else { ciljniSL = OrderOpenPrice() + odmik; } }
+  else                        { if( OrderStopLoss() == OrderOpenPrice() - odmik ) { return( USPEH ); } else { ciljniSL = OrderOpenPrice() - odmik; } }
   
   modifyRezultat = OrderModify( id, OrderOpenPrice(), ciljniSL, 0, 0, clrNONE );
   if( modifyRezultat == false ) 
@@ -663,6 +782,79 @@ int PreberiIteracijo( int stIteracije )
   return( USPEH );
 } // PreberiIteracijo
 
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: PrestaviRavni()
+-------------------------
+(o) Funkcionalnost: funkcija prestavi ravni eno raven višje ali nižje, odvisno od vhodnega parametra. Če je vhodni parameter OP_BUY, začetno ceno dvignem za eno raven. Sicer jo za eno
+    raven spustimo.
+(o) Zaloga vrednosti: funkcija vedno vrne TRUE.
+(o) Vhodni parametri: 
+  (-) OP_BUY: ravni premaknemo eno raven višje
+  (-) OP_SELL: ravni premaknemo eno raven nižje
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+bool PrestaviRavni( int smer )
+{
+   int i;
+   int rezultat;
+   if( smer == OP_SELL )
+   { 
+      // prestavimo vse nakupne pozicije eno raven višje in na prvo nakupno raven vpišemo bivšo prodajno pozicijo osnovne ravni
+      for( i = MAX_POZ-1; i > 0; i-- )   { bpozicije[i] = bpozicije[i-1]; } 
+      bpozicije[ 0 ] = spozicije[ 0 ];
+      rezultat = PostaviSL( bpozicije[ 0 ], odmikSL );
+      if( rezultat != USPEH ) { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PrestaviRavni:INFO: Postavljanje SL pozicije ", bpozicije[ 0 ], " ni uspelo. Pozicija dodana v vrsto za kasnejše nastavljanje." ); }
+      
+      // prestavimo vse prodajne pozicije eno raven nižje
+      for( i = 0; i < (MAX_POZ-1); i++ ) { spozicije[i] = spozicije[i+1];} 
+      spozicije[MAX_POZ-1] = PROSTO; 
+           
+      // ponastavimo začetno ceno in cene začetnih ravni
+      cz = ceneSravni[ 0 ] - d/2;
+      OsveziCeneRavni( cz );
+   }
+   if( smer == OP_BUY ) 
+   {
+      // prestavimo vse prodajne pozicije eno raven višje in na prvo prodajno raven vpišemo bivšo nakupno pozicijo osnovne ravni
+      for( i = MAX_POZ-1; i > 0; i-- )   { spozicije[i] = spozicije[i-1]; } 
+      spozicije[ 0 ] = bpozicije[ 0 ];
+      rezultat = PostaviSL( spozicije[0], odmikSL );
+      if( rezultat != USPEH ) { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PrestaviRavni:INFO: Postavljanje SL pozicije ", spozicije[ 0 ], " ni uspelo. Pozicija dodana v vrsto za kasnejše nastavljanje." ); }
+      
+      // prestavimo vse nakupne pozicije eno raven nižje
+      for( i = 0; i < (MAX_POZ-1); i++ ) { bpozicije[i] = bpozicije[i+1]; } 
+      bpozicije[MAX_POZ-1] = PROSTO; 
+      
+      // ponastavimo začetno ceno in cene začetnih ravni
+      cz = ceneBravni[ 0 ] + d/2;
+      OsveziCeneRavni( cz );
+   }
+   
+   // ponastavimo še vrednosti spremenljivk ravni
+   if( Ask <= ceneSravni[0] ) 
+   { 
+      braven = NEVELJAVNO; 
+      i = 0;
+      while( ceneSravni[i] >= Ask ) { i++; }
+      sraven = i - 1;
+   }
+   if( Bid >= ceneBravni[0] ) 
+   { 
+     sraven = NEVELJAVNO;
+     i = 0;
+     while( ceneBravni[i] <= Bid ) { i++; }
+     braven = i - 1;
+   }
+   
+   // prestavimo črte na zaslonu
+   PremakniCrto( "zacetnaCena", cz );
+   PremakniCrto( "nakupnaRaven", ceneBravni[ 0 ] );
+   PremakniCrto( "prodajnaRaven", ceneSravni[ 0 ] );
+   ChartRedraw();
+   
+   return( true );
+} // PrestaviRavni
 
 
 
@@ -885,28 +1077,33 @@ FUNKCIJA: VrednostOdprtihPozicij()
 double VrednostOdprtihPozicij()
 {
   double vrednost = 0;
-  bool   stonoga  = false;
-  if( braven != NEVELJAVNO ) 
+  int najvecVrednaPozicija;
+  
+  // seštejemo vrednosti vseh pozicij
+  for( int i = 0; i < MAX_POZ; i++) 
   { 
-    for( int i = 0; i < MAX_POZ; i++) 
-    { 
-      if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) ) 
-      { 
-        if( stonoga == true ) { vrednost = vrednost + VrednostPozicije( bpozicije[ i ] ); } else { stonoga = true; } 
-      }
-    }
-    return( vrednost );
+    if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) ) { vrednost = vrednost + VrednostPozicije( bpozicije[ i ] ); } 
+    if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) ) { vrednost = vrednost + VrednostPozicije( spozicije[ i ] ); }
   }
-  if( sraven != NEVELJAVNO ) 
+  
+  // največ vredno odprto pozicijo bomo pustili za stonogo, zato vrednost te pozicije odštejemo
+  
+  if( sraven == NEVELJAVNO ) 
   { 
-    for( int j = 0; j < MAX_POZ; j++) 
-    { 
-      if( ( spozicije[ j ] != PROSTO ) && ( spozicije[ j ] != ZASEDENO ) ) 
-      { 
-        if( stonoga == true ) { vrednost = vrednost + VrednostPozicije( spozicije[ j ] ); } else { stonoga = true; }
-      } 
-    }
-    return( vrednost );
+    // ker smo trenutno na BUY strani, poiščamo največ vredno BUY pozicijo na nasprotni strani
+    najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_BUY ); 
+    // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna pozicija bpozicije[ 0 ]
+    if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = bpozicije[ 0 ]; }
+    // odštejemo vrednost največ vredne pozicije
+    vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
+  } 
+  else // braven == NEVELJAVNO
+  { 
+    // ker smo trenutno na SELL strani, poiščemo največ vredno SELL pozicijo na nasprotni strani
+    najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_SELL ); 
+    // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna pozicija spozicije[ 0 ]
+    if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = spozicije[ 0 ]; }
+    vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
   }
   return( vrednost );
 } // VrednostOdprtihPozicij
@@ -1010,6 +1207,47 @@ bool PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, do
 /*
 ****************************************************************************************************************************************************************************************
 *                                                                                                                                                                                      *
+* Funkcije za grafični prikaz osnovne cene in osnovnih ravni                                                                                                                           *
+*                                                                                                                                                                                      *
+****************************************************************************************************************************************************************************************
+*/
+bool NarisiCrto( color barva, string ime, double cena )
+{
+
+   ResetLastError(); 
+   if(!ObjectCreate(0, ime, OBJ_HLINE, 0, 0, cena)) 
+   { 
+      Print(__FUNCTION__, ": failed to create a horizontal line! Error code = ",GetLastError()); 
+      return(false); 
+   }
+   ObjectSetInteger(0, ime, OBJPROP_COLOR, barva); 
+   ObjectSetInteger(0, ime, OBJPROP_STYLE, STYLE_SOLID); 
+   ObjectSetInteger(0, ime, OBJPROP_WIDTH, 1); 
+   ObjectSetInteger(0, ime, OBJPROP_BACK, false); 
+   ObjectSetInteger(0, ime, OBJPROP_SELECTABLE, true); 
+   ObjectSetInteger(0, ime, OBJPROP_SELECTED, true); 
+   ObjectSetInteger(0, ime, OBJPROP_HIDDEN, true); 
+   ObjectSetInteger(0, ime, OBJPROP_ZORDER, 0); 
+   return(true); 
+} // NarisiCrto
+
+
+bool PremakniCrto( string ime, double cena )
+{
+   ResetLastError(); 
+   if(!ObjectMove( 0, ime, 0, 0, cena ) ) 
+   { 
+      Print(__FUNCTION__, ": failed to move the horizontal line! Error code = ",GetLastError()); 
+      return(false); 
+   } 
+   return(true); 
+} // PremakniCrto
+
+
+
+/*
+****************************************************************************************************************************************************************************************
+*                                                                                                                                                                                      *
 * FUNKCIJE DKA                                                                                                                                                                         *
 *                                                                                                                                                                                      *
 ****************************************************************************************************************************************************************************************
@@ -1025,7 +1263,21 @@ dosegla zahtevano ceno.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S0CakanjeNaZagon()
 {
-  if( cz == 0 ) { cz = cenaObZagonu; Print( "M5V", verzija, ":[", stevilkaIteracije, "]:", ":S0CakanjeNaZagon: Začetna cena [cz] = ", DoubleToString( cz, 5 ) ); return( S1 ); }
+  double cenaIndikatorja;
+  
+  cenaIndikatorja = CenaIndikatorja();
+  if( cenaIndikatorja != cz ) 
+  { 
+    OsveziCeneRavni( cenaIndikatorja ); 
+    cz = cenaIndikatorja; 
+    cenaObZagonu = Bid; 
+    
+    // prestavimo črte na zaslonu
+    PremakniCrto( "zacetnaCena", cz );
+    PremakniCrto( "nakupnaRaven", ceneBravni[ 0 ] );
+    PremakniCrto( "prodajnaRaven", ceneSravni[ 0 ] );
+    ChartRedraw();
+  }
   if( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) { return( S1 ); }
   else                                                                                             { return( S0 ); }
 } // S0CakanjeNaZagon
@@ -1039,8 +1291,8 @@ postane trenutna vrednost cz, trenutna cena (Bid) valutnega para. V tem stanju �
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S1ZacetnoStanje()
 { 
-  if( Bid >= ceneBravni[ 0 ] ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY,  ceneSravni[ 0 ], 0 ); braven = 0; sraven = NEVELJAVNO; return( S2 ); }
-  if( Ask <= ceneSravni[ 0 ] ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, ceneBravni[ 0 ], 0 ); sraven = 0; braven = NEVELJAVNO; return( S3 ); }
+  if( Bid >= ceneBravni[ 0 ] ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY,  0, 0 ); braven = 0; sraven = NEVELJAVNO; return( S2 ); }
+  if( Ask <= ceneSravni[ 0 ] ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, 0, 0 ); sraven = 0; braven = NEVELJAVNO; return( S3 ); }
   return( S1 );
 } // S1ZacetnoStanje
 
@@ -1055,38 +1307,41 @@ int S2Nakup()
 { 
   int    i;          // števec  
   string sporocilo;  // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
-  bool   stonoga;    // pomožna spremenljivka - hrani informacijo ali smo pustili eno pozicijo za stonogo
+  int premikRavni;   
+  int najvecVredna;  // hrani id največ vredne pozicije
+  
+  // preverimo ali je izpolnjen pogoj za premik ravni
+  premikRavni = IzpolnjenPogojZaPremikRavni();
+  if( premikRavni != NEVELJAVNO ) { PrestaviRavni( premikRavni ); }
   
   // prehod v stanje S3 - Prodaja
   if( Ask <= ceneSravni[ 0 ] ) 
   { 
-    for( i = 0; i < MAX_POZ; i++ ) 
-    { 
-      if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
-      if( bpozicije[ i ] != PROSTO   ) 
-      { 
-        if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); }
-        izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ i ] ); bpozicije[ i ] = PROSTO;  
-      } 
-    }
-    spozicije[ 0 ] = OdpriPozicijo( OP_SELL, ceneBravni[ 0 ], 0 ); braven = NEVELJAVNO; sraven = 0; return( S3 );
-  }  
+    if( ( spozicije[ 0 ] == PROSTO ) || ( PozicijaZaprta( spozicije[ 0 ] ) == true ) ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, 0, 0 ); } 
+    braven = NEVELJAVNO; 
+    sraven = 0; 
+    return( S3 );
+  }
+    
   // prehod v stanje S4 - Zaključek
   skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
   if( skupniIzkupicek >= p )
   {
-    stonoga = false;
+    // poiščemo največ vredno BUY pozicijo na nasprotni strani
+    najvecVredna = PoisciNajvecVrednoPozicijo( OP_BUY );
+    // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna bpozicije[ 0 ]
+    if( najvecVredna == 0 ) { najvecVredna = bpozicije[ 0 ]; }
+    // zapremo vse pozicije razen najvec vredne
     for( i = 0; i < MAX_POZ; i++ ) 
     { 
+      // zapremo BUY pozicijo
       if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
-      if( bpozicije[ i ] != PROSTO )   
-      { 
-        if( PozicijaZaprta( bpozicije[ i ] ) == false ) 
-        { 
-          if( stonoga == true ) { ZapriPozicijo( bpozicije[ i ] ); } else { if( PostaviSL( bpozicije[ i ], odmikSL ) == NAPAKA ) { DodajVVrsto( bpozicije[ i ] ); } stonoga = true; }; 
-        } 
-      }
+      if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != najvecVredna ) ) { if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); } } 
+      // zapremo SELL pozicijo
+      if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
+      if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != najvecVredna ) ) { if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); } }
     }
+    if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); }  
     sporocilo = "M5-V"+verzija+":OBVESTILO: dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
     braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
   }
@@ -1094,11 +1349,7 @@ int S2Nakup()
   // dosežena je naslednja višja raven
   if( Bid >= ceneBravni[ braven + 1 ] )
   {
-    if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == false ) ) 
-    {
-      if( PostaviSL( bpozicije[ braven ], odmikSL ) == NAPAKA ) { DodajVVrsto( bpozicije[ braven ] ); } // če nastavljanje SL na BE ni uspelo, dodamo id pozicije v vrsto za kasnejše ponastavljanje
-    }
-    if( bpozicije[ braven+1 ] == PROSTO ) { bpozicije[ braven + 1 ] = OdpriPozicijo( OP_BUY,  ceneSravni[ 0 ], braven + 1 ); }
+    if( ( bpozicije[ braven+1 ] == PROSTO ) || ( PozicijaZaprta( bpozicije[ braven+1 ] ) == true ) ) { bpozicije[ braven + 1 ] = OdpriPozicijo( OP_BUY,  0, braven + 1 ); }
     braven++;
     Print(  ":[", stevilkaIteracije, "]:", "Nova nakupna raven: ", braven, " @", DoubleToString( ceneBravni[ braven ], 5 ) );
   }
@@ -1106,9 +1357,6 @@ int S2Nakup()
   // cena pade pod trenutno raven
   if( Bid <= ceneBravni[ braven ] )
   {
-    if( bpozicije[ braven+1 ] == ZASEDENO ) { bpozicije[ braven+1 ] = PROSTO; }
-    if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == true ) ) 
-    { izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ braven ] ); bpozicije[ braven ] = ZASEDENO; }
     if( braven > 0 ) { braven--; Print( ":[", stevilkaIteracije, "]:", "Nova nakupna raven: ", braven, " @", DoubleToString( ceneBravni[ braven ], 5 ) );  };
   }
   
@@ -1117,8 +1365,7 @@ int S2Nakup()
   { 
     if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == true ) ) 
     { 
-      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ braven ] ); bpozicije[ braven ] = ZASEDENO; 
-      if( bpozicije[ braven+1 ] == ZASEDENO ) { bpozicije[ braven+1 ] = PROSTO; }  
+      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ braven ] ); bpozicije[ braven ] = PROSTO; 
     }
   }
   return( S2 );
@@ -1135,60 +1382,59 @@ int S3Prodaja()
 { 
   int    i;         // števec  
   string sporocilo; // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
-  bool   stonoga;   // pomožna spremenljivka - hrani informacijo ali smo pustili eno pozicijo za stonogo
+  int    premikRavni;
+  int najvecVredna;  // hrani id največ vredne pozicije
+  
+  // preverimo ali je izpolnjen pogoj za premik ravni
+  premikRavni = IzpolnjenPogojZaPremikRavni();
+  if( premikRavni != NEVELJAVNO ) { PrestaviRavni( premikRavni ); }
   
   // prehod v stanje S2 - Nakup
   if( Bid >= ceneBravni[ 0 ] ) 
   { 
-    for( i = 0; i < MAX_POZ; i++ ) 
-    { 
-      if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
-      if( spozicije[ i ] != PROSTO   ) 
-      { 
-        if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); }
-        izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ i ] ); spozicije[ i ] = PROSTO;  
-      } 
-    }
-    bpozicije[ 0 ] = OdpriPozicijo( OP_BUY, ceneSravni[ 0 ], 0 ); sraven = NEVELJAVNO; braven = 0; return( S2 );
+    if( ( bpozicije[ 0 ] == PROSTO ) || ( PozicijaZaprta( bpozicije[ 0 ] ) == true ) ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY, 0, 0 ); }
+    sraven = NEVELJAVNO; 
+    braven = 0; 
+    return( S2 );
   }
+  
   // prehod v stanje S4 - Zaključek
   skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
   if( skupniIzkupicek >= p )
   {
-    stonoga = false;
+    // poiščemo največ vredno SELL pozicijo na nasprotni strani
+    najvecVredna = PoisciNajvecVrednoPozicijo( OP_SELL );
+    // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna spozicije[ 0 ]
+    if( najvecVredna == 0 ) { najvecVredna = spozicije[ 0 ]; }
+    // zapremo vse pozicije razen najvec vredne
     for( i = 0; i < MAX_POZ; i++ ) 
     { 
+      // zapremo SELL pozicije
       if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
-      if( spozicije[ i ] != PROSTO   ) 
-      { 
-        if( PozicijaZaprta( spozicije[ i ] ) == false ) 
-        { 
-          if( stonoga == true ) { ZapriPozicijo( spozicije[ i ] ); } else { if( PostaviSL( spozicije[ i ], odmikSL ) == NAPAKA ) { DodajVVrsto( spozicije[ i ] ); }; stonoga = true; };  
-        } 
-      }
+      if( ( spozicije[ i ] != PROSTO   ) && ( spozicije[ i ] != najvecVredna ) ) { if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); } } 
+      // zapremo BUY pozicije
+      if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }    
+      if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != najvecVredna ) )   { if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); } }
     }
+    if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); }  
     sporocilo = "M5-V"+verzija+":OBVESTILO: Dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
     braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
   }
+  
   // dosežena je naslednja višja raven
   if( Ask <= ceneSravni[ sraven + 1 ] )
   {
-    if( ( spozicije[ sraven ] != PROSTO ) && ( spozicije[ sraven ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ sraven ] ) == false ) ) 
-    { 
-      if( PostaviSL( spozicije[ sraven ], odmikSL ) == NAPAKA ) { DodajVVrsto( spozicije[ sraven ] ); }; // če postavljanje SL na BE ni bilo uspešno, dodamo pozicijo v vrsto za kasnejše ponastavljanje
-    }
-    if( spozicije[ sraven+1 ] == PROSTO ) { spozicije[ sraven + 1 ] = OdpriPozicijo( OP_SELL,  ceneBravni[ 0 ], sraven + 1 ); }
+    if( ( spozicije[ sraven+1 ] == PROSTO ) || ( PozicijaZaprta( spozicije[ sraven+1 ] ) == true ) ) { spozicije[ sraven + 1 ] = OdpriPozicijo( OP_SELL,  0, sraven + 1 ); }
     sraven++;
     Print( ":[", stevilkaIteracije, "]:", "Nova prodajna raven: ", sraven, " @", DoubleToString( ceneSravni[ sraven ], 5 ) );
   }
+  
   // cena pade pod trenutno raven
   if( Ask >= ceneSravni[ sraven ] )
   {
-    if( spozicije[ sraven+1 ] == ZASEDENO ) { spozicije[ sraven+1 ] = PROSTO; }
-    if( ( spozicije[ sraven ] != PROSTO ) && ( spozicije[ sraven ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ sraven ] ) == true ) ) 
-    { izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ sraven ] ); spozicije[ sraven ] = ZASEDENO; }
     if( sraven > 0 ) { sraven--; Print( ":[", stevilkaIteracije, "]:", "Nova prodajna raven: ", sraven, " @", DoubleToString( ceneSravni[ sraven ], 5 ) ); }
   }
+  
   // če je bil pri eni od pozicij dosežen stop loss takoj popravimo izkupiček iteracije in označimo pozicijo eno raven višje kot prosto
   for( i = 0; i < MAX_POZ; i++ )
   { 
