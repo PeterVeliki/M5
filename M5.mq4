@@ -1,7 +1,7 @@
 /*
 ****************************************************************************************************************************************************************************************
 *                                                                                                                                                                                      *
-* M5.mq4                                                                                                                                                      *
+* M5.mq4                                                                                                                                                                               *
 *                                                                                                                                                                                      *
 * Copyright Peter Novak ml., M.Sc.                                                                                                                                                     *
 ****************************************************************************************************************************************************************************************
@@ -21,6 +21,7 @@ extern double p;                     // Profitni cilj;
 extern int    samodejniPonovniZagon; // Samodejni ponovni zagon - DA(>0) ali NE(0). Če je po doseženem profitnem cilju ponovno dosežena začetna cena cz, se algoritem znova požene.
 extern int    n;                     // Številka iteracije. Če želimo zagon nove iteracije, potem podamo vrednost 0;
 extern double odmikSL;               // Odmik pri postavljanju stop-loss na break-even. Vrednost odmika prištejemo (buy) ali odštejemo (sell) ceni odprtja;
+extern int    stonoga;               // Način stonoge (milipede) vklopljen (1) oziroma izklopljen (0)
 
 
 
@@ -56,7 +57,7 @@ int    spozicije [MAX_POZ]; // Enolične oznake vseh odprtih prodajnih pozicij;
 int    sraven;              // Trenutna raven na prodajni strani. Če je cena trenutno na nakupni strani, potem ima spremenljivka vrednost NEVELJAVNO.
 int    stanje;              // Trenutno stanje algoritma;
 int    stevilkaIteracije;   // Številka trenutne iteracije;
-int    verzija = 5;         // Trenutna verzija algoritma;
+int    verzija = 11;        // Trenutna verzija algoritma;
 
 
 
@@ -1086,24 +1087,26 @@ double VrednostOdprtihPozicij()
     if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) ) { vrednost = vrednost + VrednostPozicije( spozicije[ i ] ); }
   }
   
-  // največ vredno odprto pozicijo bomo pustili za stonogo, zato vrednost te pozicije odštejemo
-  
-  if( sraven == NEVELJAVNO ) 
-  { 
-    // ker smo trenutno na BUY strani, poiščamo največ vredno BUY pozicijo na nasprotni strani
-    najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_BUY ); 
-    // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna pozicija bpozicije[ 0 ]
-    if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = bpozicije[ 0 ]; }
-    // odštejemo vrednost največ vredne pozicije
-    vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
-  } 
-  else // braven == NEVELJAVNO
-  { 
-    // ker smo trenutno na SELL strani, poiščemo največ vredno SELL pozicijo na nasprotni strani
-    najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_SELL ); 
-    // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna pozicija spozicije[ 0 ]
-    if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = spozicije[ 0 ]; }
-    vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
+  // če smo v načinu stonoge, potem največ vredno odprto pozicijo pustimo za stonogo, zato vrednost te pozicije odštejemo
+  if( stonoga == 1 )
+  {
+    if( sraven == NEVELJAVNO ) 
+    { 
+      // ker smo trenutno na BUY strani, poiščamo največ vredno BUY pozicijo na nasprotni strani
+      najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_BUY ); 
+      // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna pozicija bpozicije[ 0 ]
+      if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = bpozicije[ 0 ]; }
+      // odštejemo vrednost največ vredne pozicije
+      vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
+    } 
+    else // braven == NEVELJAVNO
+    { 
+      // ker smo trenutno na SELL strani, poiščemo največ vredno SELL pozicijo na nasprotni strani
+      najvecVrednaPozicija = PoisciNajvecVrednoPozicijo( OP_SELL ); 
+      // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna pozicija spozicije[ 0 ]
+      if( najvecVrednaPozicija == 0 ) { najvecVrednaPozicija = spozicije[ 0 ]; }
+      vrednost = vrednost - VrednostPozicije( najvecVrednaPozicija ); 
+    }
   }
   return( vrednost );
 } // VrednostOdprtihPozicij
@@ -1305,10 +1308,10 @@ spremljamo raven na kateri se nahajamo in ustrezno vzdržujemo odprte buy pozici
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S2Nakup()
 { 
-  int    i;          // števec  
-  string sporocilo;  // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
-  int premikRavni;   
-  int najvecVredna;  // hrani id največ vredne pozicije
+  int    i;            // števec  
+  string sporocilo;    // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
+  int    premikRavni;  // hrani informacijo ali je raven potrebno premakniti 
+  int    najvecVredna; // hrani id največ vredne pozicije
   
   // preverimo ali je izpolnjen pogoj za premik ravni
   premikRavni = IzpolnjenPogojZaPremikRavni();
@@ -1327,11 +1330,19 @@ int S2Nakup()
   skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
   if( skupniIzkupicek >= p )
   {
-    // poiščemo največ vredno BUY pozicijo na nasprotni strani
-    najvecVredna = PoisciNajvecVrednoPozicijo( OP_BUY );
-    // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna bpozicije[ 0 ]
-    if( najvecVredna == 0 ) { najvecVredna = bpozicije[ 0 ]; }
-    // zapremo vse pozicije razen najvec vredne
+    if ( stonoga == 1 ) 
+    {
+      // poiščemo največ vredno BUY pozicijo na nasprotni strani
+      najvecVredna = PoisciNajvecVrednoPozicijo( OP_BUY );
+      // če na nasprotni strani ni nobene BUY pozicije, potem je največ vredna bpozicije[ 0 ]
+      if( najvecVredna == 0 ) { najvecVredna = bpozicije[ 0 ]; }
+    }
+    else
+    {
+      najvecVredna = 0;
+    }
+  
+    // zapremo vse pozicije razen najvec vredne (če je določena)
     for( i = 0; i < MAX_POZ; i++ ) 
     { 
       // zapremo BUY pozicijo
@@ -1341,7 +1352,7 @@ int S2Nakup()
       if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
       if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != najvecVredna ) ) { if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); } }
     }
-    if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); }  
+    if ( stonoga == 1 ) { if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); } }
     sporocilo = "M5-V"+verzija+":OBVESTILO: dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
     braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
   }
@@ -1363,9 +1374,15 @@ int S2Nakup()
   // če je bil pri eni od pozicij dosežen stop loss takoj popravimo izkupiček iteracije
   for( i = 0; i < MAX_POZ; i++ )
   { 
-    if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == true ) ) 
+    if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ i ] ) == true ) ) 
     { 
-      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ braven ] ); bpozicije[ braven ] = PROSTO; 
+      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ i ] ); bpozicije[ i ] = PROSTO; 
+      Print( "Knjižen izkupiček iteracije - BUY" );
+    }
+    if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ i ] ) == true ) ) 
+    { 
+      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ i ] ); spozicije[ i ] = PROSTO; 
+      Print( "Knjižen izkupiček iteracije - SELL" );
     }
   }
   return( S2 );
@@ -1380,10 +1397,10 @@ spremljamo raven na kateri se nahajamo in ustrezno vzdržujemo odprte sell pozic
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S3Prodaja()
 { 
-  int    i;         // števec  
-  string sporocilo; // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
-  int    premikRavni;
-  int najvecVredna;  // hrani id največ vredne pozicije
+  int    i;            // števec  
+  string sporocilo;    // string za sporočilo, ki ga pošljemo ob doseženem profitnem cilju
+  int    premikRavni;  // hrani vrednost ali je potreben premik ravni in v katero smer
+  int    najvecVredna; // hrani id največ vredne pozicije
   
   // preverimo ali je izpolnjen pogoj za premik ravni
   premikRavni = IzpolnjenPogojZaPremikRavni();
@@ -1402,10 +1419,17 @@ int S3Prodaja()
   skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
   if( skupniIzkupicek >= p )
   {
-    // poiščemo največ vredno SELL pozicijo na nasprotni strani
-    najvecVredna = PoisciNajvecVrednoPozicijo( OP_SELL );
-    // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna spozicije[ 0 ]
-    if( najvecVredna == 0 ) { najvecVredna = spozicije[ 0 ]; }
+    if( stonoga == 1 )
+    {
+      // poiščemo največ vredno SELL pozicijo na nasprotni strani
+      najvecVredna = PoisciNajvecVrednoPozicijo( OP_SELL );
+      // če na nasprotni strani ni nobene SELL pozicije, potem je največ vredna spozicije[ 0 ]
+      if( najvecVredna == 0 ) { najvecVredna = spozicije[ 0 ]; }
+    }
+    else
+    {
+      najvecVredna = 0;
+    }
     // zapremo vse pozicije razen najvec vredne
     for( i = 0; i < MAX_POZ; i++ ) 
     { 
@@ -1416,7 +1440,7 @@ int S3Prodaja()
       if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }    
       if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != najvecVredna ) )   { if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); } }
     }
-    if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); }  
+    if( stonoga == 1 ) { if( PostaviSL( najvecVredna, odmikSL ) == NAPAKA ) { DodajVVrsto( najvecVredna ); } }
     sporocilo = "M5-V"+verzija+":OBVESTILO: Dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
     braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
   }
@@ -1438,10 +1462,15 @@ int S3Prodaja()
   // če je bil pri eni od pozicij dosežen stop loss takoj popravimo izkupiček iteracije in označimo pozicijo eno raven višje kot prosto
   for( i = 0; i < MAX_POZ; i++ )
   { 
-    if( ( spozicije[ sraven ] != PROSTO ) && ( spozicije[ sraven ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ sraven ] ) == true ) ) 
+    if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ i ] ) == true ) ) 
     { 
-      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ sraven ] ); spozicije[ sraven ] = ZASEDENO; 
-      if( spozicije[ sraven+1 ] == ZASEDENO ) { spozicije[ sraven+1 ] = PROSTO; } 
+      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ i ] ); bpozicije[ i ] = PROSTO; 
+      Print( "Knjižen izkupiček iteracije - BUY" );
+    }
+    if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ i ] ) == true ) ) 
+    { 
+      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ i ] ); spozicije[ i ] = PROSTO; 
+      Print( "Knjižen izkupiček iteracije - SELL" );
     }
   }
   
