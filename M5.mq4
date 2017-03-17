@@ -1281,7 +1281,7 @@ int S0CakanjeNaZagon()
     PremakniCrto( "prodajnaRaven", ceneSravni[ 0 ] );
     ChartRedraw();
   }
-  if( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) { return( S1 ); }
+  if( ( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) && ( TimeHour( TimeCurrent()) >= 8) ) { return( S1 ); }
   else                                                                                             { return( S0 ); }
 } // S0CakanjeNaZagon
 
@@ -1315,7 +1315,31 @@ int S2Nakup()
   
   // preverimo ali je izpolnjen pogoj za premik ravni
   premikRavni = IzpolnjenPogojZaPremikRavni();
-  if( premikRavni != NEVELJAVNO ) { PrestaviRavni( premikRavni ); }
+  if( premikRavni != NEVELJAVNO ) 
+  { 
+    PrestaviRavni( premikRavni ); 
+    // test zapremo vse na drugi strani
+    if( premikRavni == OP_BUY )
+    {
+      for( i = 0; i < MAX_POZ; i++ ) 
+      { 
+        // zapremo SELL pozicije
+        if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
+        OrderSelect( spozicije[ i ], SELECT_BY_TICKET );
+        if( ( OrderType() == OP_SELL ) && ( spozicije[ i ] != PROSTO ) ) { if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); } }
+      }
+    }
+    if( premikRavni == OP_SELL )
+    {
+      for( i = 0; i < MAX_POZ; i++ ) 
+      { 
+        // zapremo BUY pozicije
+        if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
+        OrderSelect( bpozicije[ i ], SELECT_BY_TICKET );
+        if( ( OrderType() == OP_BUY) && ( bpozicije[ i ] != PROSTO ) ) { if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); } }
+      }
+    }
+  }
   
   // prehod v stanje S3 - Prodaja
   if( Ask <= ceneSravni[ 0 ] ) 
@@ -1404,7 +1428,31 @@ int S3Prodaja()
   
   // preverimo ali je izpolnjen pogoj za premik ravni
   premikRavni = IzpolnjenPogojZaPremikRavni();
-  if( premikRavni != NEVELJAVNO ) { PrestaviRavni( premikRavni ); }
+  if( premikRavni != NEVELJAVNO ) 
+  { 
+    PrestaviRavni( premikRavni ); 
+    // test zapremo vse na drugi strani
+    if( premikRavni == OP_BUY )
+    {
+      for( i = 0; i < MAX_POZ; i++ ) 
+      { 
+        // zapremo SELL pozicije
+        if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
+        OrderSelect( spozicije[ i ], SELECT_BY_TICKET );
+        if( ( OrderType() == OP_SELL ) && ( spozicije[ i ] != PROSTO ) ) { if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); } }
+      }
+    }
+    if( premikRavni == OP_SELL )
+    {
+      for( i = 0; i < MAX_POZ; i++ ) 
+      { 
+        // zapremo BUY pozicije
+        if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
+        OrderSelect( bpozicije[ i ], SELECT_BY_TICKET );
+        if( ( OrderType() == OP_BUY) && ( bpozicije[ i ] != PROSTO ) ) { if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); } }
+      }
+    }
+  }
   
   // prehod v stanje S2 - Nakup
   if( Bid >= ceneBravni[ 0 ] ) 
