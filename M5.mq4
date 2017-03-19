@@ -121,7 +121,7 @@ int init()
       else                           
       { 
         Print( "M5-V", verzija, ":init:Odprta nova iteracija št. ", stevilkaIteracije ); n = stevilkaIteracije; 
-        ShraniIteracijo( stevilkaIteracije, cz );
+        ChartRedraw();
         NarisiCrto( clrRed, "zacetnaCena", cz );
         NarisiCrto( clrGreen, "nakupnaRaven", ceneBravni[ 0 ] );
         NarisiCrto( clrGreen, "prodajnaRaven", ceneSravni[ 0 ] );
@@ -424,10 +424,7 @@ int IzracunajStanje()
   }
   if( ( Bid < ceneBravni[ 0 ] ) && ( Bid > ceneSravni[ 0 ] ) ) 
   {
-    if( ObstajaOdprtaPozicija( OP_BUY  ) == true ) { sraven = NEVELJAVNO; braven = 0; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S2 ), ". Trenutna raven je: 0" ); return( S2 ); }
-    if( ObstajaOdprtaPozicija( OP_SELL ) == true ) { braven = NEVELJAVNO; sraven = 0; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S3 ), ". Trenutna raven je: 0" ); return( S3 ); }
-    // če ne obstaja ne odprta nakupna in ne odprta prodajna pozicija, potem gremo v začetno stanje
-    sraven = NEVELJAVNO; braven = NEVELJAVNO; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S1 ) ); return( S1 );
+    braven = NEVELJAVNO; sraven = NEVELJAVNO; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma je neodločeno, izbrano stanje: ", ImeStanja( S2 ) ); return( S2 ); 
   }
   Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzracunajStanje:OPOZORILO: Ta stavek se nikoli ne bi smel izvesti - preveri pravilnost delovanja algoritma." );
   return( NAPAKA );
@@ -724,17 +721,11 @@ bool PozicijaZaprta( int id )
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: PreberiIteracijo( int stIteracije )
-(o) Funkcionalnost:
- (-) prebere naslednje parametre algoritma iz datoteke M5-n.dat:
-  (*) razdalja med osnovnima ravnema - d
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - r
-  (*) začetna cena - cz
-  (*) velikost pozicij v lotih - L
-  (*) profitni cilj - p
-  (*) indikator samodejnega ponovnega zagona - samodejniPonovni Zagon
+(o) Funkcionalnost: ponastavi stanje algoritma po prekinitvi delovanja
+ (-) nastavi začetno ceno algoritma cz na trenutno vrednost indikatorja;
+ (-) izračune ravni na prodajni in nakupni strani;
+ (-) inicializira spremenljivki sraven in braven
  (-) sešteje izkupiček vseh zaprtih pozicij, ki pripadajo iteraciji n in ga shrani v spremenljivko izkupiček iteracije
- (-) napolni polje ceneBravni
- (-) napolni polje ceneSravni
  (-) nastavi vrednost vseh elementov polja bpozicije na PROSTO
  (-) nastavi vrednost vseh elementov polja spozicije na PROSTO
  (-) pregleda odprte nakupne pozicije in tiste, ki pripadajo iteraciji n, prepiše na ustrezne ravni v polje bpozicije
@@ -746,34 +737,19 @@ FUNKCIJA: PreberiIteracijo( int stIteracije )
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int PreberiIteracijo( int stIteracije )
 {
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  ResetLastError();
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_READ|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    d                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    r                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    cz                    = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    L                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    p                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    samodejniPonovniZagon = FileReadInteger( rocajDatoteke, INT_VALUE    );
-    odmikSL               = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    Print( "Branje stanja iteracije iz datoteke ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",         DoubleToString( d,       5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",          DoubleToString( r,       5 ) );
-    Print( "  Začetna cena [cz]: ",                                              DoubleToString( cz,      5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                   DoubleToString( L,       5 ) );
-    Print( "  Profitni cilj [p]: ",                                              DoubleToString( p,       5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", samodejniPonovniZagon        );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( odmikSL, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else 
-  { Print( "M5-V", verzija, ":PreberiIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( NAPAKA ); }
+  // začetna cena je trenutna cena indikatorja
+  cz = CenaIndikatorja();
+  
+  Print( "Branje stanja iteracije: -------------------------------------------------------------------------------------------------------------------" );
+  Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",         DoubleToString( d,       5 ) );
+  Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",          DoubleToString( r,       5 ) );
+  Print( "  Začetna cena [cz]: ",                                              DoubleToString( cz,      5 ) );
+  Print( "  Velikost pozicij v lotih [L]: ",                                   DoubleToString( L,       5 ) );
+  Print( "  Profitni cilj [p]: ",                                              DoubleToString( p,       5 ) );
+  Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", samodejniPonovniZagon        );
+  Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( odmikSL, 5 ) );
+  Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
+  
   izkupicekIteracije = IzkupicekZaprtihPozicijIteracije( stIteracije ); Print( "  Izkupicek iteracije: ", DoubleToString( izkupicekIteracije, 5 ) );
   skupniIzkupicek    = izkupicekIteracije;
   OsveziCeneRavni( cz );
@@ -895,58 +871,6 @@ bool PreveriSL()
 } // PreveriSL
 
 
-    
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: ShraniIteracijo( stIteracije )
----------------------------
-(o) Funkcionalnost: Funkcija shrani podatke o trenutni iteraciji n v datoteko:
- (-) zapiše naslednje parametre algoritma v datoteke M5-n.dat:
-  (*) razdalja med osnovnima ravnema - d
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - r
-  (*) začetna cena - cz
-  (*) velikost pozicij v lotih - L
-  (*) profitni cilj - p
-  (*) indikator samodejnega ponovnega zagona - samodejniPonovni Zagon
-(o) Zaloga vrednosti:
- (-) USPEH  - odpiranje datoteke je bilo uspešno
- (-) NAPAKA - odpiranje datoteke ni bilo uspešno
-(o) Vhodni parametri: eksplicitno sta podana spodnji dve vrednosti, ostale vrednosti se preberejo iz globalnih spremenljivk.
-  (*) stIteracije - številka iteracije
-  (*) cena - cena, ki jo shranimo kot začetno ceno iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int ShraniIteracijo( int stIteracije, double cena )
-{
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_WRITE|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    FileWriteDouble ( rocajDatoteke, d    );
-    FileWriteDouble ( rocajDatoteke, r    );
-    FileWriteDouble ( rocajDatoteke, cena );
-    FileWriteDouble ( rocajDatoteke, L    );
-    FileWriteDouble ( rocajDatoteke, p    );
-    FileWriteInteger( rocajDatoteke, samodejniPonovniZagon );
-    FileWriteDouble ( rocajDatoteke, odmikSL );
-    Print( "Zapisovanje stanja iteracije ", stIteracije, " v datoteko ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",         DoubleToString( d,       5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",          DoubleToString( r,       5 ) );
-    Print( "  Začetna cena [cz]: ",                                              DoubleToString( cena,    5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                   DoubleToString( L,       5 ) );
-    Print( "  Profitni cilj [p]: ",                                              DoubleToString( p,       5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", samodejniPonovniZagon        );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( odmikSL, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else 
-  { Print( "M5-V", verzija, ":ShraniIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( NAPAKA ); }
-  return( USPEH );
-} // ShraniIteracijo
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: SLMogocePostaviti( id )
@@ -1006,7 +930,7 @@ int SprostiPozicije( int vrsta )
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: VpisiOdprtePozicije( int st )
 ----------------------------------
-(o) Funkcionalnost: pregleda vse trenutno odprte pozicije in prepiše tiste, ki pripadajo iteraciji st na ustrezno raven v tabelah bpozicije / spozicije
+(o) Funkcionalnost: pregleda vse trenutno odprte pozicije in tiste, ki pripadajo iteraciji st vpiše na ustrezno raven v tabelah bpozicije / spozicije
 (o) Zaloga vrednosti: USPEH (vedno uspe)
 (o) Vhodni parametri: st - številka iteracije
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
@@ -1016,11 +940,13 @@ int VpisiOdprtePozicije( int st )
   int    stIteracijeI; // hramba za stevilko iteracije ukaza, ki ga trenutno obdelujemo
   int    ravenK;       // hramba za raven ukaza, ki ga trenutno obdelujemo
   int    stUkazov;     // stevilo odprtih pozicij v terminalu
+  int    i;            // števec
+  int    j;            // števec
 
   stUkazov  = OrdersTotal();
-  for( int i = 0; i < stUkazov; i++ )
+  for( j = 0; j < stUkazov; j++ )
   {
-    if( OrderSelect( i, SELECT_BY_POS ) == false ) 
+    if( OrderSelect( j, SELECT_BY_POS ) == false ) 
     { Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: Napaka pri dostopu do odprtih pozicij." ); } 
     else                   
     {
@@ -1029,15 +955,28 @@ int VpisiOdprtePozicije( int st )
       stIteracijeI = magicNumberN - ravenK;
       if( stIteracijeI == st ) 
       { 
-        switch( OrderType() ) 
-        {
-          case OP_BUY:  bpozicije[ ravenK ] = OrderTicket(); Print(  "BUY pozicija ", OrderTicket(), ", iteracije ", stIteracijeI, " vpisana na raven ", ravenK ); break;
-          case OP_SELL: spozicije[ ravenK ] = OrderTicket(); Print( "SELL pozicija ", OrderTicket(), ", iteracije ", stIteracijeI, " vpisana na raven ", ravenK ); break; 
-          default: Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: Nepričakovana vrsta ukaza." ); 
+        // našli smo pozicijo, ki pripada podani iteraciji
+        if( OrderCloseTime() == 0 )
+        { // pozicija ni zaprta
+          if( OrderOpenPrice() <= cz )
+          { // pozicijo bomo vpisali na prodajno stran
+            i = 0;
+            while( ( ceneSravni[ i ] >= OrderOpenPrice() ) && ( i < MAX_POZ ) )  { i++; }
+            if( i == MAX_POZ-1 ) { Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: pozicije ", OrderTicket(), " ni bilo mogoče vpisati na nobeno raven na prodajni strani." ); }
+            else { spozicije[ i ] = OrderTicket(); Print( "  - pozicija ", OrderTicket(), " uspešno vpisana na prodajno raven ", i, "." ); }
+          }
+          else
+          { // pozicijo bomo vpisali na nakupno stran
+            i = 0;
+            while( ( ceneBravni[ i ] <= OrderOpenPrice() ) && ( i < MAX_POZ ) )  { i++; }
+            if( i == MAX_POZ-1 ) { Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: pozicije ", OrderTicket(), " ni bilo mogoče vpisati na nobeno raven na nakupni strani." ); }
+            else { bpozicije
+            [ i ] = OrderTicket(); Print( "  - pozicija ", OrderTicket(), " uspešno vpisana na nakupno raven ", i, "." ); }
+          }
         }
       }
-    } 
-  } 
+    }
+  }  
   return( USPEH );
 } // VpisiOdprtePozicije
 
@@ -1136,74 +1075,6 @@ bool ZapriPozicijo( int id )
     default:      return( OrderDelete( id ) );
   }  
 } // ZapriPozicijo
-
-
-
-/*
-****************************************************************************************************************************************************************************************
-*                                                                                                                                                                                      *
-* SERVISNE FUNKCIJE                                                                                                                                                                    *
-* Urejene po abecednem vrstnem redu                                                                                                                                                    *
-*                                                                                                                                                                                      *
-* Servisnih funkcij algoritem ne uporablja, služijo kot pripomočki, kadar gre pri izvajanju algoritma kaj narobe. Vstavi se jih v blok namenjen servisnim funkcijam znotraj init       *
-****************************************************************************************************************************************************************************************
-*/
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, double LL, double pp, int spz, string imeKopije )
-(o) Funkcionalnost: 
- (-) preimenuje datoteko, ki hrani podatke o iteraciji stIteracije v datoteko z imenom podanim v parametru imeKopije
- (-) ponovno zapiše datoteko s podatki o iteraciji s podatki podanimi v parametrih funkcije:
-  (*) razdalja med osnovnima ravnema - dd
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - rr
-  (*) začetna cena - cc
-  (*) velikost pozicij v lotih - LL
-  (*) profitni cilj - pp
-  (*) indikator samodejnega ponovnega zagona - spz
-(o) Zaloga vrednosti:
- (-) USPEH  - prepis datoteke je bil uspešen
- (-) NAPAKA - prepis datoteke ni bil uspešen
-(o) Vhodni parametri: 
-  (*) stIteracije - številka iteracije, katere datoteko bomo prepisali.
-  (*) dd, rr, cc, LL, pp, spz - so opisani že zgoraj
-  (*) imeKopije cena - cena, ki jo shranimo kot začetno ceno iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, double LL, double pp, int spz, double slo, string imeKopije )
-{
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  if( FileMove( imeDatoteke, 0, imeKopije, FILE_REWRITE ) == false ) 
-  { 
-    Print( "M5-V", verzija, ":PrepisiZapisIteracije:USODNA NAPAKA: Preimenovanje datoteke ", imeDatoteke, " ni bilo uspešno. Koda napake: ", GetLastError() ); return( NAPAKA );
-  }
-  
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_WRITE|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    FileWriteDouble ( rocajDatoteke, dd  );
-    FileWriteDouble ( rocajDatoteke, rr  );
-    FileWriteDouble ( rocajDatoteke, cc  );
-    FileWriteDouble ( rocajDatoteke, LL  );
-    FileWriteDouble ( rocajDatoteke, pp  );
-    FileWriteInteger( rocajDatoteke, spz );
-    FileWriteDouble ( rocajDatoteke, slo );
-    Print( "Zapisovanje stanja iteracije ", stIteracije, " v datoteko ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",          DoubleToString( dd, 5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",           DoubleToString( rr, 5 ) );
-    Print( "  Začetna cena [cz]: ",                                               DoubleToString( cc, 5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                    DoubleToString( LL, 5 ) );
-    Print( "  Profitni cilj [p]: ",                                               DoubleToString( pp, 5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", spz );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( slo, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else 
-  { Print( "M5-V", verzija, ":ShraniIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( NAPAKA ); }
-  return( USPEH );
-} // PrepisiZapisIteracije
 
 
 
