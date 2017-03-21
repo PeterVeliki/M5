@@ -57,7 +57,7 @@ int    spozicije [MAX_POZ]; // Enolične oznake vseh odprtih prodajnih pozicij;
 int    sraven;              // Trenutna raven na prodajni strani. Če je cena trenutno na nakupni strani, potem ima spremenljivka vrednost NEVELJAVNO.
 int    stanje;              // Trenutno stanje algoritma;
 int    stevilkaIteracije;   // Številka trenutne iteracije;
-int    verzija = 11;        // Trenutna verzija algoritma;
+int    verzija = 12;        // Trenutna verzija algoritma;
 
 
 
@@ -100,14 +100,6 @@ int init()
   bool rezultat; // spremenljivka, ki hrani povratno informacijo ali je prišlo do napake pri branju podatkov iz datoteke
     
   IzpisiPozdravnoSporocilo();
-  
-  // ------------------ Blok za klice servisnih funkcij - na koncu odkomentiraj vrstico, ki pošlje algoritem v stanje S4.---------------------
-  // ---sem vstavi klice servisnih funkcij - primer:
-  // PrepisiZapisIteracije( 11200, 0.00100, 0.00100, 1.08772, 0.09, 0.00100, 0, 0.00010, "M5-11200-kopija-2.dat" );
-  // PrepisiZapisIteracije( 11100, 0.00100, 0.00100, 1.08926, 0.08, 0.00100, 0, 0.00010, "M5-11100-kopija-2.dat" );
-  // stanje = S4; samodejniPonovniZagon = 0; return( USPEH );
-  // ------------------ Konec bloka za klice servisnih funkcij -------------------------------------------------------------------------------
-  
   maxIzpostavljenost = 0;
   cz = CenaIndikatorja();
   cenaObZagonu = Bid;
@@ -121,10 +113,9 @@ int init()
       else                           
       { 
         Print( "M5-V", verzija, ":init:Odprta nova iteracija št. ", stevilkaIteracije ); n = stevilkaIteracije; 
-        ChartRedraw();
-        NarisiCrto( clrRed, "zacetnaCena", cz );
-        NarisiCrto( clrGreen, "nakupnaRaven", ceneBravni[ 0 ] );
-        NarisiCrto( clrGreen, "prodajnaRaven", ceneSravni[ 0 ] );
+        NarisiCrto( clrRed,   StringConcatenate( stevilkaIteracije, "-zacetnaCena"   ), cz              );
+        NarisiCrto( clrGreen, StringConcatenate( stevilkaIteracije, "-nakupnaRaven"  ), ceneBravni[ 0 ] );
+        NarisiCrto( clrGreen, StringConcatenate( stevilkaIteracije, "-prodajnaRaven" ), ceneSravni[ 0 ] );
         ChartRedraw();
         stanje = S0; return( USPEH ); 
       }
@@ -424,7 +415,7 @@ int IzracunajStanje()
   }
   if( ( Bid < ceneBravni[ 0 ] ) && ( Bid > ceneSravni[ 0 ] ) ) 
   {
-    braven = NEVELJAVNO; sraven = NEVELJAVNO; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma je neodločeno, izbrano stanje: ", ImeStanja( S2 ) ); return( S2 ); 
+    braven = NEVELJAVNO; sraven = NEVELJAVNO; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S1 ) ); return( S1 ); 
   }
   Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzracunajStanje:OPOZORILO: Ta stavek se nikoli ne bi smel izvesti - preveri pravilnost delovanja algoritma." );
   return( NAPAKA );
@@ -825,9 +816,9 @@ bool PrestaviRavni( int smer )
    }
    
    // prestavimo črte na zaslonu
-   PremakniCrto( "zacetnaCena", cz );
-   PremakniCrto( "nakupnaRaven", ceneBravni[ 0 ] );
-   PremakniCrto( "prodajnaRaven", ceneSravni[ 0 ] );
+   PremakniCrto( StringConcatenate( stevilkaIteracije, "-zacetnaCena"   ), cz              );
+   PremakniCrto( StringConcatenate( stevilkaIteracije, "-nakupnaRaven"  ), ceneBravni[ 0 ] );
+   PremakniCrto( StringConcatenate( stevilkaIteracije, "-prodajnaRaven" ), ceneSravni[ 0 ] );
    ChartRedraw();
    
    return( true );
@@ -1091,7 +1082,7 @@ bool NarisiCrto( color barva, string ime, double cena )
    ResetLastError(); 
    if(!ObjectCreate(0, ime, OBJ_HLINE, 0, 0, cena)) 
    { 
-      Print(__FUNCTION__, ": failed to create a horizontal line! Error code = ",GetLastError()); 
+      Print(__FUNCTION__, ": risanje horizontalne črte ni uspelo! Koda napake = ",GetLastError()); 
       return(false); 
    }
    ObjectSetInteger(0, ime, OBJPROP_COLOR, barva); 
@@ -1111,7 +1102,7 @@ bool PremakniCrto( string ime, double cena )
    ResetLastError(); 
    if(!ObjectMove( 0, ime, 0, 0, cena ) ) 
    { 
-      Print(__FUNCTION__, ": failed to move the horizontal line! Error code = ",GetLastError()); 
+      Print(__FUNCTION__, ": premikanje horizontalne črte ni uspelo! Koda napake = ",GetLastError()); 
       return(false); 
    } 
    return(true); 
@@ -1147,9 +1138,9 @@ int S0CakanjeNaZagon()
     cenaObZagonu = Bid; 
     
     // prestavimo črte na zaslonu
-    PremakniCrto( "zacetnaCena", cz );
-    PremakniCrto( "nakupnaRaven", ceneBravni[ 0 ] );
-    PremakniCrto( "prodajnaRaven", ceneSravni[ 0 ] );
+    PremakniCrto( StringConcatenate( stevilkaIteracije, "-zacetnaCena" ),   cz              );
+    PremakniCrto( StringConcatenate( stevilkaIteracije, "-nakupnaRaven" ),  ceneBravni[ 0 ] );
+    PremakniCrto( StringConcatenate( stevilkaIteracije, "-prodajnaRaven" ), ceneSravni[ 0 ] );
     ChartRedraw();
   }
   if( ( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) && ( TimeHour( TimeCurrent()) >= 8) ) { return( S1 ); }
@@ -1165,8 +1156,20 @@ postane trenutna vrednost cz, trenutna cena (Bid) valutnega para. V tem stanju �
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S1ZacetnoStanje()
 { 
-  if( Bid >= ceneBravni[ 0 ] ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY,  0, 0 ); braven = 0; sraven = NEVELJAVNO; return( S2 ); }
-  if( Ask <= ceneSravni[ 0 ] ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, 0, 0 ); sraven = 0; braven = NEVELJAVNO; return( S3 ); }
+  if( Bid >= ceneBravni[ 0 ] ) 
+  { 
+    if( bpozicije[ 0 ] == PROSTO ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY,  0, 0 ); } 
+    braven = 0; 
+    sraven = NEVELJAVNO; 
+    return( S2 ); 
+  }
+  if( Ask <= ceneSravni[ 0 ] ) 
+  { 
+    if( spozicije[ 0 ] == PROSTO ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, 0, 0 ); }
+    sraven = 0; 
+    braven = NEVELJAVNO; 
+    return( S3 ); 
+  }
   return( S1 );
 } // S1ZacetnoStanje
 
