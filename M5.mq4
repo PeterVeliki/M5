@@ -1124,27 +1124,35 @@ bool PremakniCrto( string ime, double cena )
 FUNKCIJA DKA: S0CakanjeNaZagon() 
 ----------------------------
 V to stanje vstopimo po zaključenem nastavljanju začetnih vrednosti, če je v parametru cz podana zahtevana cena za zagon. V tem stanju čakamo, da bo cena valutnega para 
-dosegla zahtevano ceno. 
+dosegla zahtevano ceno in da obenem preverjamo tudi, da smo znotraj ure predvidene za zagon algoritma.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S0CakanjeNaZagon()
 {
   double cenaIndikatorja;
   
   cenaIndikatorja = CenaIndikatorja();
+  
   if( cenaIndikatorja != cz ) 
   { 
     OsveziCeneRavni( cenaIndikatorja ); 
     cz = cenaIndikatorja; 
-    cenaObZagonu = Bid; 
-    
+    cenaObZagonu = Bid;   
     // prestavimo črte na zaslonu
     PremakniCrto( StringConcatenate( stevilkaIteracije, "-zacetnaCena" ),   cz              );
     PremakniCrto( StringConcatenate( stevilkaIteracije, "-nakupnaRaven" ),  ceneBravni[ 0 ] );
     PremakniCrto( StringConcatenate( stevilkaIteracije, "-prodajnaRaven" ), ceneSravni[ 0 ] );
     ChartRedraw();
   }
-  if( ( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) && ( TimeHour( TimeCurrent()) >= 8) ) { return( S1 ); }
-  else                                                                                             { return( S0 ); }
+  
+  if( ( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) && 
+      ( ( TimeHour( TimeCurrent()) >= 8 ) && ( TimeHour( TimeCurrent() ) < 9 ) ) )
+  { 
+    return( S1 ); 
+  }
+  else                                                                                             
+  { 
+    return( S0 ); 
+  }
 } // S0CakanjeNaZagon
 
 
