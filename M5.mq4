@@ -1,7 +1,7 @@
 /*
 ****************************************************************************************************************************************************************************************
 *                                                                                                                                                                                      *
-* M5.mq4                                                                                                                                                    *
+* M5.mq4                                                                                                                                                                               *
 *                                                                                                                                                                                      *
 * Copyright Peter Novak ml., M.Sc.                                                                                                                                                     *
 ****************************************************************************************************************************************************************************************
@@ -10,58 +10,35 @@
 #property copyright "Peter Novak ml., M.Sc."
 #property link      "http://www.marlin.si"
 
-
-
 // Vhodni parametri --------------------------------------------------------------------------------------------------------------------------------------------------------------------
-extern double d=0;                     // Razdalja med osnovnima ravnema za nakup in prodajo;
-extern double r=0.00100;                // Razdalja med dodatnimi ravnmi za prodajo ali nakup;
-extern double cz=0;                    // Zacetna cena. Ce je podana vrednost enaka 0, potem se algoritem zažene takoj in zacetna cena postane trenutna cena valutnega para (Bid);
-extern double L=1;                     // Velikost pozicij v lotih;
-extern double p=0.00600;               // Profitni cilj;
-extern int    samodejniPonovniZagon=0; // Samodejni ponovni zagon - DA(>0) ali NE(0). Ce je po doseženem profitnem cilju ponovno dosežena zacetna cena cz, se algoritem znova požene.
-extern int    n=0;                     // Številka iteracije. Ce želimo zagon nove iteracije, potem podamo vrednost 0;
-extern double odmikSL=0;               // Odmik pri postavljanju stop-loss na break-even. Vrednost odmika prištejemo (buy) ali odštejemo (sell) ceni odprtja;
-extern double bravenE;                 // Rocno podana vrednost zacetne ravni za nakup - namesto izracuna na podlagi cz in d se v verziji 5 upošteva ta vrednost;
-extern double sravenE;                 // Rocno podana vrednost zacetne ravni za prodajo - namesto izracuna na podlagi cz in d se v verziji 5 upošteva ta vrednost;
-extern double faktorPovecanja=2;       // Če je prišlo do prehoda iz ene na drugo stran, ob prehodu povečamo velikost za faktorPovecanja in hkrati zmanjšamo cilj za isti faktor. To naredimo 1x.
-
-
+extern double L=3; // Najvecja dovojena velikost pozicij v lotih;
+extern double p=0.00300; // Profitni cilj;
+extern double tveganje=3; // Tveganje v odstotkih - uporablja se za izracun velikosti pozicije (privzeto 3%).
+extern int    n=0; // Številka iteracije;
+extern double stoTock=0.00100; // razdalja sto točk (različna za 5 mestne pare in 3 mestne pare)
+extern double vrednostStoTock=0.009; // vrednost sto točk v EUR
+extern double vstopnaCenaNakup; // Vstopna cena za nakup;
+extern double vstopnaCenaProdaja; // Vstopna cena za prodajo;
 
 // Globalne konstante ------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#define MAX_POZ     99  // najvecje možno število odprtih pozicij v eno smer;
-#define PROSTO     -1   // oznaka za vsebino polja bpozicije / spozicije;
-#define ZASEDENO   -2   // oznaka za vsebino polja bpozicije / spozicije;
-#define NEVELJAVNO -3   // oznaka za vrednost spremenljivk braven / sraven;
 #define USPEH      -4   // oznaka za povratno vrednost pri uspešno izvedenem klicu funkcije;
 #define NAPAKA     -5   // oznaka za povratno vrednost pri neuspešno izvedenem klicu funkcije;
-#define ZE_OBSTAJA -6   // pri dodajanju pozicije v vrsto se je izkazalo, da je pozicija že v vrsti;
 #define S0          1   // oznaka za stanje S0 - Cakanje na zagon;
 #define S1          2   // oznaka za stanje S1 - Zacetno stanje;
 #define S2          3   // oznaka za stanje S2 - Nakup;
 #define S3          4   // oznaka za stanje S3 - Prodaja;
 #define S4          5   // oznaka za stanje S4 - Zakljucek;
 
-
-
 // Globalne spremenljivke --------------------------------------------------------------------------------------------------------------------------------------------------------------
-int    bpozicije [MAX_POZ]; // Enolicne oznake vseh odprtih nakupnih pozicij;
-int    braven;              // Trenutna raven na nakupni strani. Ce je cena trenutno na prodajni strani, potem ima spremenljivka vrednost NEVELJAVNO;
-double cenaObZagonu;        // hrani ceno ob trenutku zagona algoritma;
-double ceneBravni[MAX_POZ]; // Cene posameznih nakupnih ravni;
-double ceneSravni[MAX_POZ]; // Cene posameznih prodajnih ravni;
-double ck;                  // Cena ob kateri je bil dosežen profitni cilj. Uporabljam jo za ugotavljanje ali je ponovno dosežena zacetna cena cz (ce je samodejniPonovniZagon DA)
-double izkupicekIteracije;  // Izkupicek trenutne iteracije algoritma (izkupicek zaprtih pozicij)
-int    kslVrsta;            // Kazalec na naslednje prosto mesto v polju slVrsta
-double maxIzpostavljenost;  // Najvecja izguba algoritma (minimum od izkupickaIteracije);
-double skupniIzkupicek;     // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij
-int    slVrsta   [MAX_POZ]; // Hrani id-je vseh pozicij, pri katerih postavljanje stop loss ukazov ni bilo uspešno
-int    spozicije [MAX_POZ]; // Enolicne oznake vseh odprtih prodajnih pozicij;
-int    sraven;              // Trenutna raven na prodajni strani. Ce je cena trenutno na nakupni strani, potem ima spremenljivka vrednost NEVELJAVNO.
-int    stanje;              // Trenutno stanje algoritma;
-int    stevilkaIteracije;   // Številka trenutne iteracije;
-int    verzija = 5;         // Trenutna verzija algoritma;
+int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
+int spozicija; // Enolicna oznaka odprte prodajne pozicije;
+int stanje; // Trenutno stanje algoritma;
+int verzija=6; // Trenutna verzija algoritma;
 
+double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
+double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
 
+int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v letu);
 
 /*
 ****************************************************************************************************************************************************************************************
@@ -70,8 +47,6 @@ int    verzija = 5;         // Trenutna verzija algoritma;
 *                                                                                                                                                                                      *
 ****************************************************************************************************************************************************************************************
 */
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: deinit  
@@ -85,8 +60,6 @@ int deinit()
   return( USPEH );
 } // deinit
 
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: init  
 --------------
@@ -99,47 +72,11 @@ FUNKCIJA: init
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int init()
 {
-  bool rezultat; // spremenljivka, ki hrani povratno informacijo ali je prišlo do napake pri branju podatkov iz datoteke
-    
   IzpisiPozdravnoSporocilo();
-  
-  // ------------------ Blok za klice servisnih funkcij - na koncu odkomentiraj vrstico, ki pošlje algoritem v stanje S4.---------------------
-  // ---sem vstavi klice servisnih funkcij - primer:
-  // PrepisiZapisIteracije( 11200, 0.00100, 0.00100, 1.08772, 0.09, 0.00100, 0, 0.00010, "M5-11200-kopija-2.dat" );
-  // PrepisiZapisIteracije( 11100, 0.00100, 0.00100, 1.08926, 0.08, 0.00100, 0, 0.00010, "M5-11100-kopija-2.dat" );
-  // stanje = S4; samodejniPonovniZagon = 0; return( USPEH );
-  // ------------------ Konec bloka za klice servisnih funkcij -------------------------------------------------------------------------------
-  
-  maxIzpostavljenost = 0;
-  cenaObZagonu       = Bid;
-  if( n == 0 ) // Številka iteracije ni podana - zacnemo novo iteracijo
-  {
-    PonastaviVrednostiPodatkovnihStruktur();
-    stevilkaIteracije = OdpriNovoIteracijo();
-    if( stevilkaIteracije == NAPAKA )
-      { Print( "M5-V", verzija, ":init:USODNA NAPAKA: pridobivanje številke iteracije ni uspelo. Delovanje ustavljeno." ); stanje = S4; samodejniPonovniZagon = 0; return( NAPAKA ); }
-      else                           
-      {
-        Print( "M5-V", verzija, ":init:Odprta nova iteracija št. ", stevilkaIteracije ); n = stevilkaIteracije;
-        if( cz == 0 ) { ShraniIteracijo( stevilkaIteracije, cenaObZagonu ); } else { ShraniIteracijo( stevilkaIteracije, cz ); }
-        stanje = S0; return( USPEH );
-      }
-  }
-  else         // Številka iteracije je podana - nadaljujemo z obstojeco iteracijo
-  {
-    stevilkaIteracije = n;
-    kslVrsta          = 0; // vrsta pozicij katerim je treba ponastaviti SL se ne shranjuje, zato je na zacetku prazna
-    rezultat          = PreberiIteracijo( stevilkaIteracije );
-    if( rezultat == false ) { Print( "M5-V", verzija, ":init:USODNA NAPAKA: branje iteracije ni uspelo. Delovanje ustavljeno." ); stanje = S4; return( NAPAKA ); }
-    stanje            = IzracunajStanje();
-    if( stanje   != NAPAKA ) { return( USPEH ); }
-    else                     { Print( "M5-V", verzija, ":init:USODNA NAPAKA: izracun stanja algoritma ni uspel. Delovanje ustavljeno." ); stanje = S4; return( NAPAKA ); }                                                                                                       
-  }
-  Print( "M5-V", verzija, ":init:OPOZORILO: ta stavek se ne bi smel izvršiti - preveri pravilnost delovanja algoritma" );
-  return( USPEH );
+  PonastaviVrednostiPodatkovnihStruktur();
+  stanje=S0;
+  return(USPEH);
 } // init
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: start  
@@ -150,37 +87,36 @@ FUNKCIJA: start
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int start()
 {
-  int trenutnoStanje; // zabeležimo za ugotavljanje spremebe stanja
-  trenutnoStanje = stanje;
-  switch( stanje )
+  int trenutnoStanje=stanje; // zabeležimo trenutno stanje, da bomo lahko ugotovili ali je prislo do spremembe stanja
+  switch(stanje)
   {
-    case S0: stanje = S0CakanjeNaZagon(); break;
-    case S1: stanje = S1ZacetnoStanje();  break;
-    case S2: stanje = S2Nakup();          break;
-    case S3: stanje = S3Prodaja();        break;
-    case S4: stanje = S4Zakljucek();      break;
-    default: Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":start:OPOZORILO: Stanje ", stanje, " ni veljavno stanje - preveri pravilnost delovanja algoritma." );
+    case S0: stanje=S0CakanjeNaZagon(); break;
+    case S1: stanje=S1ZacetnoStanje(); break;
+    case S2: stanje=S2Nakup(); break;
+    case S3: stanje=S3Prodaja(); break;
+    case S4: stanje=S4Zakljucek(); break;
+    default: Print( "M5-V", verzija, ":[", n, "]:", ":start:OPOZORILO: Stanje ", stanje, " ni veljavno stanje - preveri pravilnost delovanja algoritma." );
   }
   // ce je prišlo do prehoda med stanji izpišemo obvestilo
-  if( trenutnoStanje != stanje ) { Print( ":[", stevilkaIteracije, "]:", "Prehod: ", ImeStanja( trenutnoStanje ), " ===========>>>>> ", ImeStanja( stanje ) ); }
+  if(trenutnoStanje!=stanje)
+  {
+    Print(":[", n, "]:", "Prehod: ", ImeStanja( trenutnoStanje ), " ===========>>>>> ", ImeStanja( stanje ) );
+  }
 
   // ce se je poslabšala izpostavljenost, to zabeležimo
-  if( maxIzpostavljenost > skupniIzkupicek ) { maxIzpostavljenost = skupniIzkupicek; Print( ":[", stevilkaIteracije, "]:", "Nova najvecja izpostavljenost: ", DoubleToString( maxIzpostavljenost, 5 ) ); }
+  if(maxIzpostavljenost>skupniIzkupicek)
+  {
+    maxIzpostavljenost=skupniIzkupicek;
+    Print(":[", n, "]:", "Nova najvecja izpostavljenost: ", DoubleToString(maxIzpostavljenost, 5));
+  }
     
   // osveževanje kljucnih kazalnikov delovanja algoritma na zaslonu
-  Comment( "Številka iteracije: ",       stevilkaIteracije,                        " \n",  
-           "Zacetna cena:",              DoubleToString( cz,                  5 ), " \n",
-           "Izkupicek iteracije: ",      DoubleToString( izkupicekIteracije,  5 ), " \n",
-           "Skupni izkupicek:",          DoubleToString( skupniIzkupicek,     5 ), " \n",
-           "Razdalja do cilja: ",        DoubleToString( p - skupniIzkupicek, 5 ), " \n",
-           "Najvecja izpostavljenost: ", DoubleToString( maxIzpostavljenost,  5 ) );
+  Comment( "Številka iteracije: ", n,"\n",  
+           "Skupni izkupicek:", DoubleToString(skupniIzkupicek, 5), "\n",
+           "Najvecja izpostavljenost: ", DoubleToString( maxIzpostavljenost,  5));
   
-  // ce vrsta pozicij za ponastavljanje stop loss-ov ni prazna, poskusimo ponastaviti stop-loss-e
-  if( kslVrsta > 0 ) { PreveriSL(); }
-  return( USPEH );
+  return(USPEH);
 } // start
-
-
 
 /*
 ****************************************************************************************************************************************************************************************
@@ -190,100 +126,26 @@ int start()
 ****************************************************************************************************************************************************************************************
 */
 
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: DodajVVrsto( int id )
--------------------------------------
-(o) Funkcionalnost: V vrsto slVrsta doda pozicijo z oznako id, ce le-te še ni v vrsti.  
-(o) Zaloga vrednosti:
-  (-) USPEH: pozicija je bila dodana v vrsto;
-  (-) ZE_OBSTAJA: pozicija v vrsti že obstaja, dodajanje ni potrebno;
-  (-) NAPAKA: pri dodajanju pozicije je prišlo do napake.
-(o) Vhodni parametri: id: oznaka pozicije.
-(o) Uporabljene globalne spremenljivke:
-  (-) kslVrsta: kazalec na naslednje prosto mesto v vrsti slVrsta;
-  (-) slVrsta: vrsta v katero shranjujemo id-je pozicij.
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int DodajVVrsto( int id )
-{
-   int i; // števec
-   
-   for( i = 0; i < kslVrsta; i++ )
-   {
-     if( slVrsta[ i ] == id ) { return( ZE_OBSTAJA ); }
-   }
-   // ce smo prišli do sem, potem pozicije id v vrsti še ni in jo dodamo, ce je še prostor v vrsti
-   if( kslVrsta < MAX_POZ ) // preverimo
-   {
-     slVrsta[ kslVrsta ] = id;
-     Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":DodajVVrsto: Pozicija ", Symbol(), ": ", i, " dodana v vrsto za ponastavitev SL." );
-     kslVrsta++; return( USPEH );
-   }
-   else                       
-   {
-     Print ( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":DodajVVrsto:OPOZORILO: Vrsta slVrsta je polna. Preveri pravilnost delovanja algoritma!!!!" );
-     return( NAPAKA );
-   }
-} // DodajVVrsto
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: ImeStanja( int KodaStanja )
+FUNKCIJA: ImeStanja(int KodaStanja)
 -------------------------------------
 (o) Funkcionalnost: Na podlagi numericne kode stanja, vrne opis stanja.  
 (o) Zaloga vrednosti: imena stanj
 (o) Vhodni parametri: KodaStanja: enolicna oznaka stanja.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-string ImeStanja( int KodaStanja )
+string ImeStanja(int KodaStanja)
 {
-  switch( KodaStanja )
+  switch(KodaStanja)
   {
-    case S0: return( "S0 - CAKANJE NA ZAGON" );
-    case S1: return( "S1 - ZACETNO STANJE"   );
-    case S2: return( "S2 - NAKUP"            );
-    case S3: return( "S3 - PRODAJA"          );
-    case S4: return( "S4 - ZAKLJUCEK"        );
-    default: Print ( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":ImeStanja:OPOZORILO: Koda stanja ", KodaStanja, " ni prepoznana. Preveri pravilnost delovanja algoritma." );
+    case S0: return("S0 - CAKANJE NA ZAGON");
+    case S1: return("S1 - ZACETNO STANJE");
+    case S2: return("S2 - NAKUP");
+    case S3: return("S3 - PRODAJA");
+    case S4: return("S4 - ZAKLJUCEK");
+    default: Print ("M5-V", verzija, ":[", n, "]:", ":ImeStanja:OPOZORILO: Koda stanja ", KodaStanja, " ni prepoznana. Preveri pravilnost delovanja algoritma.");
   }
   return( NAPAKA );
 } // ImeStanja
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: IzkupicekZaprtihPozicijIteracije( st )
------------------------------------------------
-(o) Funkcionalnost: pregleda vse zaprte pozicije in sešteje izkupicek (v tockah) tistih pozicij, ki pripadajo iteraciji st
-(o) Zaloga vrednosti: izkupicek zaprtih pozicij. Ce ni nobene zaprte pozicije, potem vrne vrednost 0.
-(o) Vhodni parametri: številka iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-double IzkupicekZaprtihPozicijIteracije( int st )
-{
-  int    magicNumberN; // hramba za magic number ukaza, ki ga trenutno obdelujemo
-  int    stIteracijeI; // hramba za stevilko iteracije ukaza, ki ga trenutno obdelujemo
-  int    ravenK;       // hramba za raven ukaza, ki ga trenutno obdelujemo
-  double izkupicek;    // hramba trenutne vrednosti izkupicka
-  int    stUkazov;     // stevilo ukazov v zgodovini terminala
-
-  stUkazov  = OrdersHistoryTotal();
-  izkupicek = 0;
-  for( int i = 0; i < stUkazov; i++ )
-  {
-    if( OrderSelect( i, SELECT_BY_POS, MODE_HISTORY ) == false )
-    { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzkupicekZaprtihPozicijIteracije: Napaka pri dostopu do zgodovine pozicij." ); return( 0 ); }
-    else                   
-    {
-      magicNumberN = OrderMagicNumber();
-      ravenK       = magicNumberN % 100;
-      stIteracijeI = magicNumberN - ravenK;
-      if( stIteracijeI == st ) { izkupicek = izkupicek + VrednostPozicije( OrderTicket() ); }
-    }
-  }
-  return( izkupicek );
-} // IzkupicekZaprtihPozicijIteracije
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: IzpisiPozdravnoSporocilo
@@ -294,130 +156,113 @@ FUNKCIJA: IzpisiPozdravnoSporocilo
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int IzpisiPozdravnoSporocilo()
 {
-  Print( "****************************************************************************************************************" );
-  Print( "Dober dan. Tukaj M5, verzija ", verzija, "." );
-  Print( "****************************************************************************************************************" );
-  return( USPEH );
+  Print("****************************************************************************************************************");
+  Print("Dober dan. Tukaj M5, verzija ", verzija, "." );
+  Print("****************************************************************************************************************");
+  return(USPEH);
 } // IzpisiPozdravnoSporocilo
 
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: IzpolnjenPogojZaPonovniZagon
---------------------------------------
-(o) Funkcionalnost: izracuna ali je trenutna cena valutnega para ponovno dosegla zacetno ceno. Uporablja se v kombinaciji z nastavitvijo za samodejni ponovni zagon algoritma, potem ko
-    je enkrat že doseženo koncno stanje
-(o) Zaloga vrednosti:
-  (-) true: cena je ponovno dosegla zacetno ceno;
-  (-) false: cena ni ponovno dosegla zacetne cena.
-(o) Vhodni parametri: /
-  (-) uporablja globalni spremenljivki cz in ck
+FUNKCIJA: IzracunajStopLossCeno(int smer)
+-----------------------------------------
+(o) Funkcionalnost: izracuna stop loss z uporabo indikatorja Parabolic SAR.
+(o) Zaloga vrednosti: cena pri kateri bomo postavili SL.
+(o) Vhodni parametri: smer, možni sta dve vrednosti: OP_BUY ali OP_SELL.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool IzpolnjenPogojZaPonovniZagon()
+double IzracunajStopLossCeno(int smer)
 {
-  if( ck > cz) { if( Bid <= cz ) { return( true ); } else { return( false ); } }
-  else         { if( Bid >= cz ) { return( true ); } else { return( false ); } }
-  Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzpolnjenPogojZaPonovniZagon:OPOZORILO: Ta stavek se ne bi smel nikoli izvesti - preveri delovanje algoritma." );
-} // IzpolnjenPogojZaPonovniZagon
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: IzracunajStanje
--------------------------
-(o) Funkcionalnost: glede na trenutno stanje podatkovnih struktur algoritma in trenutno ceno valutnega para (Bid) izracuna stanje algoritma
-(o) Zaloga vrednosti:
-(-) ce je bilo stanje algoritma mogoce izracunati, potem vrne kodo stanja
-(-) NAPAKA: stanja ni bilo mogoce izracunati
-(o) Vhodni parametri: / - uporablja globalne podatkovne strukture
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int IzracunajStanje()
-{
-  int i; // stevec
+  int i=0; // zacasna spremenljivka, indeks s katerim se sprehajamo po polju preteklih vrednosti indikatorja iSAR
+  double stopLoss; // izračunana vrednost stop loss
   
-  i = 0;
-  if( Bid >= ceneBravni[ 0 ] )
-  {
-    sraven = NEVELJAVNO; while( ( ceneBravni[ i+1 ] <= Bid ) && ( i < MAX_POZ-1 ) ) { i++; }
-    if( ceneBravni[ i+1 ] > Bid ) { braven = i; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S2 ), ". Trenutna raven je: ", braven ); return( S2 ); }
-    else                          { return( NAPAKA ); }
-  }
-  if( Bid <= ceneSravni[ 0 ] )
-  {
-    braven = NEVELJAVNO; while( ( ceneSravni[ i+1 ] >= Bid ) && ( i < MAX_POZ-1 ) ) { i++; }
-    if( ceneSravni[ i+1 ] < Bid ) { sraven = i; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S3 ), ". Trenutna raven je: ", sraven ); return( S3 ); }
-    else                          { return( NAPAKA ); }
-  }
-  if( ( Bid < ceneBravni[ 0 ] ) && ( Bid > ceneSravni[ 0 ] ) )
-  {
-    if( ObstajaOdprtaPozicija( OP_BUY  ) == true ) { sraven = NEVELJAVNO; braven = 0; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S2 ), ". Trenutna raven je: 0" ); return( S2 ); }
-    if( ObstajaOdprtaPozicija( OP_SELL ) == true ) { braven = NEVELJAVNO; sraven = 0; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S3 ), ". Trenutna raven je: 0" ); return( S3 ); }
-    // ce ne obstaja ne odprta nakupna in ne odprta prodajna pozicija, potem gremo v zacetno stanje
-    sraven = NEVELJAVNO; braven = NEVELJAVNO; Print( ":[", stevilkaIteracije, "]:", "Stanje algoritma: ", ImeStanja( S1 ) ); return( S1 );
-  }
-  Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":IzracunajStanje:OPOZORILO: Ta stavek se nikoli ne bi smel izvesti - preveri pravilnost delovanja algoritma." );
-  return( NAPAKA );
-} // IzracunajStanje
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: ObstajaOdprtaPozicija( vrsta )
-----------------------------------------
-(o) Funkcionalnost: preveri ali v polju bpozicije ali spozicije obstaja kakšen element, ki nima vrednosti PROSTO.
-(o) Zaloga vrednosti:
-(-) true - ce obstaja tak element
-(-) false - tak element ne obstaja ali je podana napacna vrsta pozicij.
-(o) Vhodni parametri:
-(-) OP_BUY - ce išcemo v polju bpozicije
-(-) OP_SELL - ce išcemo v polju spozicije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool ObstajaOdprtaPozicija( int vrsta )
-{
-  int i; // števec
-  
-  i = 0;
-  switch( vrsta )
+  switch(smer)
   {
     case OP_BUY:
-      while( ( bpozicije[ i ] == PROSTO ) && ( i < MAX_POZ ) ) { i++; }
-      if( bpozicije[ i ] != PROSTO ) { return( true ); } else { return( false ); }
+      // dokler je trenutna vrednost indikatorja nad ceno se pomikamo v preteklost, do prve vrednosti, ki je pod ceno
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>=High[i])
+      {
+        i++;
+      }
+      // ko smo našli prvo vrednost pod ceno, se ponovno pomikamo v preteklost dokler se indikator spet ne preseli nad ceno. Zadnja vrednost pod ceno je nas stop loss.
+      do
+      {
+        i++;
+      }
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<=Low[i]);
+      stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
+      Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Nakupna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
+      return(stopLoss);
     case OP_SELL:
-      while( ( spozicije[ i ] == PROSTO ) && ( i < MAX_POZ ) ) { i++; }
-      if( spozicije[ i ] != PROSTO ) { return( true ); } else { return( false ); }
+      // dokler je trenutna vrednost indikatorja pod ceno se pomikamo v preteklost, do prve vrednosti, ki je nad ceno
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<=Low[i])
+      {
+        i++;
+      }
+      // ko smo našli prvo vrednost nad ceno, se ponovno pomikamo v preteklost dokler se indikator spet ne preseli pod ceno. Zadnja vrednost nad ceno je nas stop loss.
+      do
+      {
+        i++;
+      }
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>=High[i]);
+      stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
+      Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Prodajna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
+      return(stopLoss);
     default:
-      Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":ObstajaOdprtaPozicija:OPOZORILO: Neznana vrsta pozicij." ); return( false );
-  }
-  Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":ObstajaOdprtaPozicija:OPOZORILO: Ta stavek se nikoli ne bi smel izvesti - preveri pravilnost delovanja algoritma." );
-  return( false );
-} // ObstajaOdprtaPozicija
-
-
+      Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:NAPAKA: Nepricakovana smer - preveri pravilnost delovanja algoritma.");
+      return(0);
+  }  
+} // IzracunajStopLossCeno
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: OdpriNovoIteracijo
-----------------------------
-(o) Funkcionalnost:
-  (-) preveri ali globalna spremenljivka M5Iteracija obstaja
-  (-) ce obstaja, potem prebere njeno vrednost, jo poveca za 100, shrani nazaj in shranjeno vrednost vrne kot številko iteracije
-  (-) ce ne obstaja, potem jo ustvari, nastavi njeno vrednost na 100 in vrne 100 kot številko iteracije
-(o) Zaloga vrednosti:
-  (-) številka iteracije, ce ni bilo napake
-  (-) NAPAKA, ce je pri branju ali pisanju v globalno spremenljivko prišlo do napake
-(o) Vhodni parametri: /
+FUNKCIJA: IzracunajVelikostPozicije(double tveganje, double razdalja)
+---------------------------------------------------------------------
+(o) Funkcionalnost: glede na stanje na računu in podano tveganje v odstotkih izracuna velikost pozicije
+(o) Zaloga vrednosti: velikost pozicije
+(o) Vhodni parametri:
+(-) tveganje: tveganje izrazeno v odstotku stanja na racunu v primeru da je dosezen stop loss
+(-) razdalja: razdalja med ceno odprtja in stop loss-om v tockah
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int OdpriNovoIteracijo()
+double IzracunajVelikostPozicije(double tveganje, double razdalja)
 {
-  double   i;        // hramba za trenutno vrednost iteracije
-  datetime rezultat; // hramba za rezultat nastavljanja globalne spremenljivke M5Iteracija
+  int k;
+  double l;
+  double velikost;
+  
+  k=(razdalja/stoTock)+1;
+  l=((tveganje/100)*AccountBalance())/(k*vrednostStoTock);
+  Print("M5-V", verzija, ":[", n, "]:", "Vrednost k=", k, ", l=", DoubleToString(l, 2));
+  velikost=0.01*MathFloor(l);
+  Print("M5-V", verzija, ":[", n, "]:", "Izracunaj velikostPozicije:INFO: Velikost pozicij: ", DoubleToString(velikost, 2));
+  
+  // ce izracunana velikost presega najvecjo dovoljeno velikost, ki je podana kot parameter algoritma, potem vrnemo najvecjo dovoljeno velikost;
+  if(velikost>L)
+  {
+    Print("M5-V", verzija, ":[", n, "]:", "Izracunaj velikostPozicije:INFO: Izracunana velikost pozicije ", DoubleToString(velikost, 2),
+          " presega maksimalno velikost ", DoubleToString(L, 2), ". Uporabljena bo maksimalna velikost.");
+    return(L);
+  }
+  else
+  {
+    return(velikost);
+  }
+} // IzracunajVelikostPozicije
 
-  if( GlobalVariableCheck( "M5Iteracija" ) == true ) { i = GlobalVariableGet( "M5Iteracija" ); i = i + 100; } else { i = 100; }
-  rezultat = GlobalVariableSet( "M5Iteracija", i );
-  if( rezultat == 0 ) { Print( "M5-V", verzija, ":OdpriNovoIteracijo:NAPAKA: Pri shranjevanju številke iteracije ", i, " je prišlo do napake." ); return( NAPAKA ); }
-  return( i );
-} // OdpriNovoIteracijo
-
-
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: NovDan()
+----------------------------------------------------
+(o) Funkcionalnost: vrne true, če je napočil nov dan in false če ni.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+bool NovDan()
+{
+  if(trenutniDan!=TimeDayOfYear(TimeCurrent()))
+  {
+    trenutniDan=TimeDayOfYear(TimeCurrent());
+    return(true);
+  }
+  else
+  {
+    return(false);
+  }
+}
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: OdpriPozicijo( int Smer, double sl, int r )
@@ -427,158 +272,96 @@ FUNKCIJA: OdpriPozicijo( int Smer, double sl, int r )
 (o) Vhodni parametri:
 (-) Smer: OP_BUY ali OP_SELL
 (-) sl: cena za stop loss
-(-) raven: raven na kateri odpiramo pozicijo
+(-) velikost: velikost pozicije
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int OdpriPozicijo( int Smer, double sl, int raven )
+int OdpriPozicijo( int Smer, double sl, double velikost )
 {
-  int rezultat;    // spremenljivka, ki hrani rezultat odpiranja pozicije
+  int rezultat; // spremenljivka, ki hrani rezultat odpiranja pozicije
   int magicNumber; // spremenljivka, ki hrani magic number pozicije
   string komentar; // spremenljivka, ki hrani komentar za pozicijo
-  magicNumber = stevilkaIteracije + raven;
-  komentar    = StringConcatenate( "M5V", verzija, "-", stevilkaIteracije, "-", raven );
+  magicNumber=n;
+  komentar=StringConcatenate( "M5V", verzija, "-", n);
 
   do
+  {
+    if(Smer==OP_BUY)
     {
-      if( Smer == OP_BUY ) { rezultat = OrderSend( Symbol(), OP_BUY,  L, Ask, 0, sl, 0, komentar, magicNumber, 0, Green ); }
-      else                 { rezultat = OrderSend( Symbol(), OP_SELL, L, Bid, 0, sl, 0, komentar, magicNumber, 0, Red   ); }
-      if( rezultat == -1 )
-        {
-          Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":OdpriPozicijo:NAPAKA: neuspešno odpiranje pozicije. Ponoven poskus cez 30s..." );
-          Sleep( 30000 );
-          RefreshRates();
-        }
+      rezultat=OrderSend(Symbol(), OP_BUY, velikost, Ask, 0, sl, 0, komentar, magicNumber, 0, Green);
     }
-  while( rezultat == -1 );
-  return( rezultat );
+    else                 
+    {
+      rezultat=OrderSend(Symbol(), OP_SELL, velikost, Bid, 0, sl, 0, komentar, magicNumber, 0, Red);
+    }
+    if(rezultat == -1)
+    {
+      Print( "M5-V", verzija, ":[", n, "]:", ":OdpriPozicijo:NAPAKA: neuspešno odpiranje pozicije. Ponoven poskus cez 30s..." );
+      Sleep( 30000 );
+      RefreshRates();
+    }
+  }
+  while(rezultat==-1);
+  return(rezultat);
 } // OdpriPozicijo
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: OdstraniIzVrste( int id )
----------------------------
-(o) Funkcionalnost: Odstrani pozicijo z oznako id iz vrste slVrsta
-(o) Zaloga vrednosti:
-  (-) USPEH: pozicija odstranjena
-  (-) NAPAKA: odstranjevanje pozicije ni uspelo, ker je v vrsti ni bilo.
-(o) Vhodni parametri: id - oznaka pozicije za brisanje iz vrste
-(o) Uporabljene globalne spremenljivke:
-  (-) kslVrsta: kazalec na naslednje prosto mesto v vrsti slVrsta;
-  (-) slVrsta: vrsta v katero shranjujemo id-je pozicij.
-------------------------------------------------------- ------------------------------------------------------------------------------------------------------------------------------*/
-int OdstraniIzVrste( int id )
-{
-  int i;                // števec
-  bool pozicijaNajdena; // števec
-  
-  pozicijaNajdena = false;
-  for( i = 0; i < kslVrsta; i++ )
-  {
-    if( slVrsta[ i ]    == id   ) { pozicijaNajdena = true;        }
-    if( pozicijaNajdena == true ) { slVrsta[ i ] = slVrsta[ i+1 ]; }                          
-  }
-  if( pozicijaNajdena == true )
-  {
-    Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":OdstraniIzVrste: Pozicija ", Symbol(), ": ", i, " odstranjena iz vrste za ponastavitev SL." );
-    kslVrsta--; return( USPEH ); } else { return( NAPAKA );
-  }
-} // OdstraniIzVrste
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: OsveziCeneRavni( c )
----------------------------
-(o) Funkcionalnost: Nastavi cene ravni v poljih ceneBravni in ceneSravni, glede na podano zacetno ceno
-(o) Zaloga vrednosti: USPEH (vedno uspe)
-(o) Vhodni parametri: zacetna cena
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int OsveziCeneRavni( double c )
-{
-  if( c == 0 ) { c = cenaObZagonu; }
-  ceneBravni[ 0 ] = bravenE; Print( ":[", stevilkaIteracije, "]:", "Nakupna raven 0: ",  DoubleToString( ceneBravni[ 0 ], 5 ) );
-  ceneSravni[ 0 ] = sravenE; Print( ":[", stevilkaIteracije, "]:", "Prodajna raven 0: ", DoubleToString( ceneSravni[ 0 ], 5 ) );
-  for( int i = 1; i < MAX_POZ; i++ ) { ceneBravni[ i ] = ceneBravni[ i-1 ] + r; ceneSravni[ i ] = ceneSravni[ i-1 ] - r; }
-  return( USPEH );
-} // OsveziCeneRavni
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: PonastaviVrednostiPodatkovnihStruktur
 -----------------------------------------------
-(o) Funkcionalnost: Funkcija nastavi vrednosti vseh globalnih spremenljivk na zacetne vrednosti.
-(-) napolni polje ceneBravni
-(-) napolni polje ceneSravni
-(-) nastavi vrednosti vseh elementov polja bpozicije na PROSTO
-(-) nastavi vrednosti vseh elementov polja spozicije na PROSTO
-(-) nastavi vrednost spremenljivke braven na NEVELJAVNO
-(-) nastavi vrednost spremenljivke sraven na NEVELJAVNO
-(-) nastavi vrednost spremenljivke izkupicekIteracije na 0
-(o) Zaloga vrednosti:
-(-) USPEH: ponastavljanje uspešno
-(-) NAPAKA: ponastavljanje ni bilo uspešno
-(o) Vhodni parametri: uporablja globalne spremenljivke - parametre algoritma ob zagonu
+(o) Funkcionalnost: Funkcija nastavi vrednosti vseh globalnih spremenljivk na zacetne vrednosti;
+(o) Vhodni parametri: uporablja globalne spremenljivke - parametre algoritma ob zagonu;
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int PonastaviVrednostiPodatkovnihStruktur()
 {
-  OsveziCeneRavni( cz );
-  SprostiPozicije( OP_BUY  );
-  SprostiPozicije( OP_SELL );
-  braven             = NEVELJAVNO;
-  sraven             = NEVELJAVNO;
-  izkupicekIteracije = 0;
-  skupniIzkupicek    = 0;
-  ck                 = 0;
-  kslVrsta           = 0;
-  return( USPEH );
+  skupniIzkupicek=0;
+  maxIzpostavljenost=0;
+  trenutniDan=TimeDayOfYear(TimeCurrent());
+  return(USPEH);
 } // PonastaviVrednostiPodatkovnihStruktur
 
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: PostaviSL( int id, double r )
+FUNKCIJA: PostaviSL( int id, double cena )
 ---------------------------------------
-(o) Funkcionalnost: Funkcija poziciji z id-jem id postavi stop loss r tock od vstopne cene:
-(-) ce gre za nakupno pozicijo, potem se odmik r PRIŠTEJE k ceni odprtja. Ko je enkrat stop loss postavljen nad ceno odprtja, ga ni vec mogoce postaviti pod ceno odprtja, tudi ce
-     podamo negativen r
-(-) ce gre za prodajno pozicijo, potem se odmik r ODŠTEJE od cene odprtja. Ko je enkrat stop loss postavljen pod ceno odprtja, ga ni vec mogoce postaviti nad ceno odprtja, tudi ce
-     podamo negativen r
+(o) Funkcionalnost: Funkcija poziciji z id-jem id postavi stop loss na podano ceno;
 (o) Zaloga vrednosti:
 (-) USPEH: ponastavljanje uspešno
 (-) NAPAKA: ponastavljanje ni bilo uspešno
 (o) Vhodni parametri:
 (-) id: oznaka pozicije
-(-) odmik: odmik
+(-) cena: cena na katero naj se nastavi stop loss
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int PostaviSL( int id, double odmik )
+int PostaviSL(int id, double cena)
 {
-  double ciljniSL;
-  bool   modifyRezultat;
-  int    selectRezultat;
+  bool modifyRezultat;
+  int selectRezultat;
 
-  selectRezultat = OrderSelect( id, SELECT_BY_TICKET );
-  if( selectRezultat == false )
+  selectRezultat=OrderSelect(id, SELECT_BY_TICKET);
+  if(selectRezultat==false )
   {
-    Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":PostaviSL:NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( NAPAKA );
+    Print("M5-V", verzija, ":[", n, "]:",  ":PostaviSL:NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." );
+    return(NAPAKA);
   }
   
-  if( OrderType() == OP_BUY ) { if( OrderStopLoss() >= sravenE ) { return( USPEH ); } else { ciljniSL = sravenE + odmik; } }
-  else                        { if( OrderStopLoss() <= bravenE ) { return( USPEH ); } else { ciljniSL = bravenE - odmik; } }
-  
-  modifyRezultat = OrderModify( id, OrderOpenPrice(), ciljniSL, 0, 0, clrNONE );
-  if( modifyRezultat == false )
+  // če je stop loss že nastavljen, potem ne naredimo nic, v nasprotnem primeru ga nastavimo
+  if(OrderStopLoss()==cena)
   {
-    Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PostaviSL:OPOZORILO: Pozicije ", id, " ni bilo mogoce ponastaviti SL. Koda napake: ", GetLastError() );
-    Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PostaviSL:Obstojeci SL = ", DoubleToString( OrderStopLoss(), 5 ), " Ciljni SL = ", DoubleToString( ciljniSL, 5 ) );
-    return( NAPAKA );
+    return(USPEH);
+  }
+  else
+  {
+    modifyRezultat=OrderModify(id, OrderOpenPrice(), cena, 0, 0, clrAquamarine);
+  }
+  
+  // ce je pri postavljanju stop loss-a prišlo do napake, izpisemo opozorilo
+  if(modifyRezultat==false)
+  {
+    Print("M5-V", verzija, ":[", n, "]:", ":PostaviSL:OPOZORILO: Pozicije ", id, " ni bilo mogoce ponastaviti SL. Koda napake: ", GetLastError() );
+    Print("M5-V", verzija, ":[", n, "]:", ":PostaviSL:Obstojeci stop loss: ", DoubleToString(OrderStopLoss(), 5), ", ciljni stop loss: ", DoubleToString(cena, 5));
+    return(NAPAKA);
   }           
   else
   {
     return( USPEH );
   }
 } // PostaviSL
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: PozicijaZaprta( int id )
@@ -594,260 +377,10 @@ bool PozicijaZaprta( int id )
   int Rezultat;
 
   Rezultat = OrderSelect( id, SELECT_BY_TICKET );
-  if( Rezultat         == false ) { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PozicijaZaprta:OPOZORILO: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( true );}
+  if( Rezultat         == false ) { Print( "M5-V", verzija, ":[", n, "]:", ":PozicijaZaprta:OPOZORILO: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( true );}
   if( OrderCloseTime() == 0     ) { return( false ); }
   else                            { return( true );  }
 } // PozicijaZaprta
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: PreberiIteracijo( int stIteracije )
-(o) Funkcionalnost:
-(-) prebere naslednje parametre algoritma iz datoteke M5-n.dat:
-  (*) razdalja med osnovnima ravnema - d
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - r
-  (*) zacetna cena - cz
-  (*) velikost pozicij v lotih - L
-  (*) profitni cilj - p
-  (*) indikator samodejnega ponovnega zagona - samodejniPonovni Zagon
-(-) sešteje izkupicek vseh zaprtih pozicij, ki pripadajo iteraciji n in ga shrani v spremenljivko izkupicek iteracije
-(-) napolni polje ceneBravni
-(-) napolni polje ceneSravni
-(-) nastavi vrednost vseh elementov polja bpozicije na PROSTO
-(-) nastavi vrednost vseh elementov polja spozicije na PROSTO
-(-) pregleda odprte nakupne pozicije in tiste, ki pripadajo iteraciji n, prepiše na ustrezne ravni v polje bpozicije
-(-) pregleda odprte prodajne pozicije in tiste, ki pripadajo iteraciji n, prepiše na ustrezne ravni v polje spozicije
-(o) Zaloga vrednosti:
-(-) USPEH: ce so bile vrednosti prebrane brez napak
-(-) NAPAKA: ce je prišlo pri branju vrednosti do napake
-(o) Vhodni parametri: številka iteracije, ostalo pridobimo iz globalnih spremenljivk
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int PreberiIteracijo( int stIteracije )
-{
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  ResetLastError();
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_READ|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    d                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    r                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    cz                    = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    L                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    p                     = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    samodejniPonovniZagon = FileReadInteger( rocajDatoteke, INT_VALUE    );
-    odmikSL               = FileReadDouble ( rocajDatoteke, DOUBLE_VALUE );
-    Print( "Branje stanja iteracije iz datoteke ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",         DoubleToString( d,       5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",          DoubleToString( r,       5 ) );
-    Print( "  Zacetna cena [cz]: ",                                              DoubleToString( cz,      5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                   DoubleToString( L,       5 ) );
-    Print( "  Profitni cilj [p]: ",                                              DoubleToString( p,       5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", samodejniPonovniZagon        );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( odmikSL, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else
-  { Print( "M5-V", verzija, ":PreberiIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( NAPAKA ); }
-  izkupicekIteracije = IzkupicekZaprtihPozicijIteracije( stIteracije ); Print( "  Izkupicek iteracije: ", DoubleToString( izkupicekIteracije, 5 ) );
-  skupniIzkupicek    = izkupicekIteracije;
-  OsveziCeneRavni( cz );
-  SprostiPozicije( OP_BUY  );
-  SprostiPozicije( OP_SELL );
-  VpisiOdprtePozicije( stIteracije );
-  return( USPEH );
-} // PreberiIteracijo
-
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: PreveriSL()
-----------------------
-(o) Funkcionalnost: funkcija preveri ali je kateri od pozicij, katerih id-ji so shranjeni v polju (globalni spremenljivki) slVrsta, mogoce postaviti SL na razdaljo nastavljeno v
-    parametru algoritma odmikSL.
-(o) Zaloga vrednosti: funkcija vedno vrne TRUE.
-(o) Vhodni parametri: eksplicitnih parametrov ni, funkcija uporablja naslednje globalne spremenljivke:
-  (-) kslVrsta - kazalec na naslednjo prosto mesto v polju slVrsta
-  (-) slVrsta - polje, ki hrani id-je pozicij
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool PreveriSL()
-{
-  int i; // pomožna spremenljivka - števec
-  
-  for( i = 0; i < kslVrsta; i++ )
-  {
-    if( PozicijaZaprta( slVrsta[ i ] ) == true ) { OdstraniIzVrste( i );                                                                 }
-    else                                         
-    {
-      if( SLMogocePostaviti( slVrsta[ i ] ) == true )
-      {
-        if( PostaviSL( slVrsta[ i ], odmikSL ) == USPEH )
-        {
-          OdstraniIzVrste( i ); // ce je bilo postavljanje sl ukaza uspešno, potem pozicijo odstranimo iz vrste
-        }
-        else
-        { // v nasprotnem primeru izpišemo opozorilo - ponastavljanje bi v vecini primerov namrec moralo uspeti
-          Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":PreveriSL:OPOZORILO: Postavljanje SL pozicije ", slVrsta[ i ], " ni bilo uspešno. Preveri delovanje algoritma." );
-        }
-      }
-    }
-  }
-  return( true );
-} // PreveriSL
-
-
-    
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: ShraniIteracijo( stIteracije )
----------------------------
-(o) Funkcionalnost: Funkcija shrani podatke o trenutni iteraciji n v datoteko:
-(-) zapiše naslednje parametre algoritma v datoteke M5-n.dat:
-  (*) razdalja med osnovnima ravnema - d
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - r
-  (*) zacetna cena - cz
-  (*) velikost pozicij v lotih - L
-  (*) profitni cilj - p
-  (*) indikator samodejnega ponovnega zagona - samodejniPonovni Zagon
-(o) Zaloga vrednosti:
-(-) USPEH  - odpiranje datoteke je bilo uspešno
-(-) NAPAKA - odpiranje datoteke ni bilo uspešno
-(o) Vhodni parametri: eksplicitno sta podana spodnji dve vrednosti, ostale vrednosti se preberejo iz globalnih spremenljivk.
-  (*) stIteracije - številka iteracije
-  (*) cena - cena, ki jo shranimo kot zacetno ceno iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int ShraniIteracijo( int stIteracije, double cena )
-{
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_WRITE|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    FileWriteDouble ( rocajDatoteke, d    );
-    FileWriteDouble ( rocajDatoteke, r    );
-    FileWriteDouble ( rocajDatoteke, cena );
-    FileWriteDouble ( rocajDatoteke, L    );
-    FileWriteDouble ( rocajDatoteke, p    );
-    FileWriteInteger( rocajDatoteke, samodejniPonovniZagon );
-    FileWriteDouble ( rocajDatoteke, odmikSL );
-    Print( "Zapisovanje stanja iteracije ", stIteracije, " v datoteko ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",         DoubleToString( d,       5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",          DoubleToString( r,       5 ) );
-    Print( "  Zacetna cena [cz]: ",                                              DoubleToString( cena,    5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                   DoubleToString( L,       5 ) );
-    Print( "  Profitni cilj [p]: ",                                              DoubleToString( p,       5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", samodejniPonovniZagon        );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( odmikSL, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else
-  { Print( "M5-V", verzija, ":ShraniIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( NAPAKA ); }
-  return( USPEH );
-} // ShraniIteracijo
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: SLMogocePostaviti( id )
----------------------------------
-(o) Funkcionalnost:
-  (-) poišce ceno odprtja pozicije;
-  (-) odvisno od tega ali gre za buy ali sell pozicijo preveri ali velja, da je cena najmanj za stop level nad željenim SL (za buy pozicije) ali najmanj za stop level pod željenim SL
-     (za sell pozicije).
-  (-) ce je pogoj izpolnjen, vrne vrednost true, sicer vrne vrednost false
-(o) Zaloga vrednosti:
-  (-) true: stop loss je mogoce postaviti
-  (-) false: stop lossa ni mogoce postaviti
-(o) Vhodni parametri: id pozicije za katero preverjamo ali je stop loss mogoce postaviti
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool SLMogocePostaviti( int id )
-{
-  double openPrice;
-  double level;
-  int    selectRezultat;
-
-  level = MarketInfo( Symbol(), MODE_STOPLEVEL ) * Point;
-  selectRezultat = OrderSelect( id, SELECT_BY_TICKET );
-  if( selectRezultat == false )
-  {
-    Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:",  ":SLMogocePostaviti:NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( false );
-  }
-  openPrice = OrderOpenPrice();
-  if( OrderType() == OP_BUY ) { if( Bid > ( openPrice + odmikSL + level ) ) { return( true ); } else { return( false ); } }
-  else                        { if( Ask < ( openPrice - odmikSL - level ) ) { return( true ); } else { return( false ); } }
-  Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":SLMogocePostaviti:OPOZORILO: Ta stavek se nikoli ne bi smel izvesti - preveri pravilnost delovanja algoritma." );  
-} // SLMogocePostaviti
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: SprostiPozicije( vrsta )
-----------------------------------
-(o) Funkcionalnost: Nastavi vrednosti vseh elementov polja spozicije ali bpozicije na PROSTO.
-(o) Zaloga vrednosti: USPEH (vedno uspe)
-(o) Vhodni parametri: vrsta pozicij
-(-) ce je podana vrednost OP_BUY, potem ponastavimo elemente polja bpozicije
-(-) ce je podana vrednost OP_SELL, potem ponastavimo elemente polja spozicije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int SprostiPozicije( int vrsta )
-{
-  switch( vrsta )
-  {
-    case OP_BUY:  for( int i = 0; i < MAX_POZ; i++ ) { bpozicije[ i ] = PROSTO; } return( USPEH );
-    case OP_SELL: for( int j = 0; j < MAX_POZ; j++ ) { spozicije[ j ] = PROSTO; } return( USPEH );
-    default: Print( "M5-V", verzija, ":SprostiPozicije:OPOZORILO: Podana je bila neznana vrsta pozicij - preveri pravilnost delovanja algoritma." );
-  }
-  return( USPEH );
-} // SprostiPozicije
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: VpisiOdprtePozicije( int st )
-----------------------------------
-(o) Funkcionalnost: pregleda vse trenutno odprte pozicije in prepiše tiste, ki pripadajo iteraciji st na ustrezno raven v tabelah bpozicije / spozicije
-(o) Zaloga vrednosti: USPEH (vedno uspe)
-(o) Vhodni parametri: st - številka iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-int VpisiOdprtePozicije( int st )
-{
-  int    magicNumberN; // hramba za magic number ukaza, ki ga trenutno obdelujemo
-  int    stIteracijeI; // hramba za stevilko iteracije ukaza, ki ga trenutno obdelujemo
-  int    ravenK;       // hramba za raven ukaza, ki ga trenutno obdelujemo
-  int    stUkazov;     // stevilo odprtih pozicij v terminalu
-
-  stUkazov  = OrdersTotal();
-  for( int i = 0; i < stUkazov; i++ )
-  {
-    if( OrderSelect( i, SELECT_BY_POS ) == false )
-    { Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: Napaka pri dostopu do odprtih pozicij." ); }
-    else                   
-    {
-      magicNumberN = OrderMagicNumber();
-      ravenK       = magicNumberN % 100;
-      stIteracijeI = magicNumberN - ravenK;
-      if( stIteracijeI == st )
-      {
-        switch( OrderType() )
-        {
-          case OP_BUY:  bpozicije[ ravenK ] = OrderTicket(); Print(  "BUY pozicija ", OrderTicket(), ", iteracije ", stIteracijeI, " vpisana na raven ", ravenK ); break;
-          case OP_SELL: spozicije[ ravenK ] = OrderTicket(); Print( "SELL pozicija ", OrderTicket(), ", iteracije ", stIteracijeI, " vpisana na raven ", ravenK ); break;
-          default: Print( "M5-V", verzija, ":VpisiOdprtePozicije:OPOZORILO: Nepricakovana vrsta ukaza." );
-        }
-      }
-    }
-  }
-  return( USPEH );
-} // VpisiOdprtePozicije
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: VrednostPozicije( int id )
@@ -862,54 +395,15 @@ double VrednostPozicije( int id )
   int  vrstaPozicije;
   
   rezultat = OrderSelect( id, SELECT_BY_TICKET );
-  if( rezultat == false ) { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":VrednostPozicije:NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( 0 ); }
+  if( rezultat == false ) { Print( "M5-V", verzija, ":[", n, "]:", ":VrednostPozicije:NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( 0 ); }
   vrstaPozicije = OrderType();
   switch( vrstaPozicije )
   {
     case OP_BUY : if( OrderCloseTime() == 0 ) { return( Bid - OrderOpenPrice() ); } else { return( OrderClosePrice() - OrderOpenPrice()  ); }
     case OP_SELL: if( OrderCloseTime() == 0 ) { return( OrderOpenPrice() - Ask ); } else { return(  OrderOpenPrice() - OrderClosePrice() ); }
-    default     : Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":VrednostPozicije:NAPAKA: Vrsta ukaza ni ne BUY ne SELL. Preveri pravilnost delovanja algoritma." ); return( 0 );
+    default     : Print( "M5-V", verzija, ":[", n, "]:", ":VrednostPozicije:NAPAKA: Vrsta ukaza ni ne BUY ne SELL. Preveri pravilnost delovanja algoritma." ); return( 0 );
   }
 } // VrednostPozicije
-
-
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: VrednostOdprtihPozicij()
------------------------------------
-(o) Funkcionalnost: Vrne vsoto vrednosti vseh odprtih pozicij, razen prve. Prve ne upoštevamo, ker jo bomo pustili za stonogo.
-(o) Zaloga vrednosti: vsota vrednosti odprtih pozicij v tockah;
-(o) Vhodni parametri: / - uporablja globalne spremenljivke.
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-double VrednostOdprtihPozicij()
-{
-  double vrednost = 0;
-  if( braven != NEVELJAVNO )
-  {
-    for( int i = 0; i < MAX_POZ; i++)
-    {
-      if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) )
-      {
-        vrednost = vrednost + VrednostPozicije( bpozicije[ i ] );
-      }
-    }
-    return( vrednost );
-  }
-  if( sraven != NEVELJAVNO )
-  {
-    for( int j = 0; j < MAX_POZ; j++)
-    {
-      if( ( spozicije[ j ] != PROSTO ) && ( spozicije[ j ] != ZASEDENO ) )
-      {
-        vrednost = vrednost + VrednostPozicije( spozicije[ j ] );
-      }
-    }
-    return( vrednost );
-  }
-  return( vrednost );
-} // VrednostOdprtihPozicij
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: ZapriPozicijo( int id )
@@ -926,7 +420,7 @@ bool ZapriPozicijo( int id )
 
   Rezultat = OrderSelect( id, SELECT_BY_TICKET );
   if( Rezultat == false )
-    { Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:", ":ZapriPozicijo::NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( false ); }
+    { Print( "M5-V", verzija, ":[", n, "]:", ":ZapriPozicijo::NAPAKA: Pozicije ", id, " ni bilo mogoce najti. Preveri pravilnost delovanja algoritma." ); return( false ); }
   switch( OrderType() )
   {
     case OP_BUY : return( OrderClose ( id, OrderLots(), Bid, 0, Green ) );
@@ -935,76 +429,6 @@ bool ZapriPozicijo( int id )
   }  
 } // ZapriPozicijo
 
-
-
-/*
-****************************************************************************************************************************************************************************************
-*                                                                                                                                                                                      *
-* SERVISNE FUNKCIJE                                                                                                                                                                    *
-* Urejene po abecednem vrstnem redu                                                                                                                                                    *
-*                                                                                                                                                                                      *
-* Servisnih funkcij algoritem ne uporablja, služijo kot pripomocki, kadar gre pri izvajanju algoritma kaj narobe. Vstavi se jih v blok namenjen servisnim funkcijam znotraj init       *
-****************************************************************************************************************************************************************************************
-*/
-
-/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, double LL, double pp, int spz, string imeKopije )
-(o) Funkcionalnost:
-(-) preimenuje datoteko, ki hrani podatke o iteraciji stIteracije v datoteko z imenom podanim v parametru imeKopije
-(-) ponovno zapiše datoteko s podatki o iteraciji s podatki podanimi v parametrih funkcije:
-  (*) razdalja med osnovnima ravnema - dd
-  (*) razdalja med dodatnimi ravnmi za prodajo ali nakup - rr
-  (*) zacetna cena - cc
-  (*) velikost pozicij v lotih - LL
-  (*) profitni cilj - pp
-  (*) indikator samodejnega ponovnega zagona - spz
-(o) Zaloga vrednosti:
-(-) USPEH  - prepis datoteke je bil uspešen
-(-) NAPAKA - prepis datoteke ni bil uspešen
-(o) Vhodni parametri:
-  (*) stIteracije - številka iteracije, katere datoteko bomo prepisali.
-  (*) dd, rr, cc, LL, pp, spz - so opisani že zgoraj
-  (*) imeKopije cena - cena, ki jo shranimo kot zacetno ceno iteracije
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-bool PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, double LL, double pp, int spz, double slo, string imeKopije )
-{
-  int    rocajDatoteke;
-  string imeDatoteke;
-
-  imeDatoteke = StringConcatenate( "M5-", stIteracije, ".dat" );
-  if( FileMove( imeDatoteke, 0, imeKopije, FILE_REWRITE ) == false )
-  {
-    Print( "M5-V", verzija, ":PrepisiZapisIteracije:USODNA NAPAKA: Preimenovanje datoteke ", imeDatoteke, " ni bilo uspešno. Koda napake: ", GetLastError() ); return( false );
-  }
-  
-  rocajDatoteke = FileOpen( imeDatoteke, FILE_WRITE|FILE_BIN );
-  if( rocajDatoteke != INVALID_HANDLE)
-  {
-    FileWriteDouble ( rocajDatoteke, dd  );
-    FileWriteDouble ( rocajDatoteke, rr  );
-    FileWriteDouble ( rocajDatoteke, cc  );
-    FileWriteDouble ( rocajDatoteke, LL  );
-    FileWriteDouble ( rocajDatoteke, pp  );
-    FileWriteInteger( rocajDatoteke, spz );
-    FileWriteDouble ( rocajDatoteke, slo );
-    Print( "Zapisovanje stanja iteracije ", stIteracije, " v datoteko ", imeDatoteke, ": -------------------------------------------------------------------------" );
-    Print( "  Razdalja med osnovnima ravnema za nakup in prodajo [d]: ",          DoubleToString( dd, 5 ) );
-    Print( "  Razdalja med dodatnimi ravnmi za nakup in prodajo [r]: ",           DoubleToString( rr, 5 ) );
-    Print( "  Zacetna cena [cz]: ",                                               DoubleToString( cc, 5 ) );
-    Print( "  Velikost pozicij v lotih [L]: ",                                    DoubleToString( LL, 5 ) );
-    Print( "  Profitni cilj [p]: ",                                               DoubleToString( pp, 5 ) );
-    Print( "  Indikator samodejnega ponovnega zagona [samodejniPonovniZagon]: ", spz );
-    Print( "  Odmik stop loss [odmikSL]: ",                                      DoubleToString( slo, 5 ) );
-    Print( "--------------------------------------------------------------------------------------------------------------------------------------------" );
-    FileClose( rocajDatoteke );
-  }
-  else
-  { Print( "M5-V", verzija, ":ShraniIteracijo:USODNA NAPAKA: Odpiranje datoteke ", imeDatoteke, " ni bilo uspešno." ); return( false ); }
-  return( true );
-} // PrepisiZapisIteracije
-
-
-
 /*
 ****************************************************************************************************************************************************************************************
 *                                                                                                                                                                                      *
@@ -1012,206 +436,122 @@ bool PrepisiZapisIteracije( int stIteracije, double dd, double rr, double cc, do
 *                                                                                                                                                                                      *
 ****************************************************************************************************************************************************************************************
 */
-
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S0CakanjeNaZagon()
-----------------------------
-V to stanje vstopimo po zakljucenem nastavljanju zacetnih vrednosti, ce je v parametru cz podana zahtevana cena za zagon. V tem stanju cakamo, da bo cena valutnega para
-dosegla zahtevano ceno.
+--------------------------------
+V to stanje vstopimo takoj po zakljuceni inicializaciji algoritma. V tem stanju cakamo, da se bo zacel nov trgovalni dan.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S0CakanjeNaZagon()
 {
-  if( cz == 0 ) { cz = cenaObZagonu; Print( "M5V", verzija, ":[", stevilkaIteracije, "]:", ":S0CakanjeNaZagon: Zacetna cena [cz] = ", DoubleToString( cz, 5 ) ); return( S1 ); }
-  if( ( ( cenaObZagonu >= cz ) && ( Bid <= cz ) ) || ( ( cenaObZagonu <= cz ) && ( Bid >= cz ) ) ) { return( S1 ); }
-  else                                                                                             { return( S0 ); }
+  if(NovDan()==true) // ce je nastopil nov dan, potem gremo naprej v zacetno stanje
+  {
+    return(S1);
+  }
+  else  // v nasprotnem primeru ostanemo v tem stanju
+  {
+    return(S0);
+  }
 } // S0CakanjeNaZagon
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S1ZacetnoStanje()
-V tem stanju se znajdemo, ko je valutni par dosegel ceno zahtevano v parametru cz (prehod iz stanja S0) oziroma v primeru, da je bil parameter cz ob zagonu algoritma enak 0,
-postane trenutna vrednost cz, trenutna cena (Bid) valutnega para. V tem stanju cakamo, da bo dosežena bodisi osnovna raven za nakup b0 ali osnovna raven za prodajo s0.
+-------------------------------
+V tem stanju se znajdemo, ko je nastopil nov trgovalni dan in v njem cakamo, da bo dosežena bodisi cena za vstop v smeri nakupa (parameter vstopnaCenaNakup) bodisi cena za vstop
+v smeri prodaje (parameter vstopnaCenaProdaja).
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S1ZacetnoStanje()
 {
-  if( Bid >= ceneBravni[ 0 ] ) { bpozicije[ 0 ] = OdpriPozicijo( OP_BUY,  ceneSravni[ 0 ], 0 ); braven = 0; sraven = NEVELJAVNO; return( S2 ); }
-  if( Ask <= ceneSravni[ 0 ] ) { spozicije[ 0 ] = OdpriPozicijo( OP_SELL, ceneBravni[ 0 ], 0 ); sraven = 0; braven = NEVELJAVNO; return( S3 ); }
-  return( S1 );
+  double stopLossCena;
+  
+  if(Bid>=vstopnaCenaNakup) // ce je presezena cena nakupne ravni, odpremo nakupno pozicijo in gremo v stanje S2
+  {
+    stopLossCena=IzracunajStopLossCeno(OP_BUY);
+    bpozicija=OdpriPozicijo(OP_BUY, stopLossCena, IzracunajVelikostPozicije(tveganje, Ask-stopLossCena));
+    return(S2);
+  }
+  if(Ask<=vstopnaCenaProdaja) // ce je presezena cena prodajne ravni, odpremo prodajno pozicijo in gremo v stanje S3
+  {
+    stopLossCena=IzracunajStopLossCeno(OP_SELL);
+    spozicija=OdpriPozicijo(OP_SELL, stopLossCena, IzracunajVelikostPozicije(tveganje, stopLossCena-Bid));
+    return(S3);
+  }
+  
+  // dokler smo znotraj intervala med obema vstopnima cenama, ostajamo v tem stanju
+  return(S1);
 } // S1ZacetnoStanje
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S2Nakup()
-V tem stanju se znajdemo, ko je cena valutnega para dosegla osnovno raven za nakup in velja braven = 0 . V vsakem trenutku je odprta najmanj ena pozicija buy. V tem stanju
-spremljamo raven na kateri se nahajamo in ustrezno vzdržujemo odprte buy pozicije.
+-----------------------
+V tem stanju imamo odprto nakupno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v končno stanje, v drugem primeru pa se
+vrnemo nazaj v stanje S1 in čakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S2Nakup()
 {
-  int    i;          // števec  
-  string sporocilo;  // string za sporocilo, ki ga pošljemo ob doseženem profitnem cilju
-
+  string sporocilo;  // niz za sestavljanje sporocila, ki ga posljemo na terminal ob doseženem profitnem cilju
+  double vrednost; // zacasna spremenljivka, ki hrani trenutno vrednost pozicije
   
-  // prehod v stanje S3 - Prodaja
-  if( Ask <= ceneSravni[ 0 ] )
+  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v končno stanje. Posljemo tudi sporocilo na terminal.
+  vrednost=VrednostPozicije(bpozicija);
+  if(vrednost>=p)
   {
-    for( i = 0; i < MAX_POZ; i++ )
-    {
-      if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
-      if( bpozicije[ i ] != PROSTO   )
-      {
-        if( PozicijaZaprta( bpozicije[ i ] ) == false ) { ZapriPozicijo( bpozicije[ i ] ); }
-        izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ i ] ); bpozicije[ i ] = PROSTO;  
-      }
-    }
-    // ob prvem prehodu na drugo stran povečamo velikost pozicij. Ko smo faktorPovecanja enkrat porabili, ga postavimo na 1
-    L=L*faktorPovecanja;
-    p=p/faktorPovecanja;
-    faktorPovecanja=1;
-    spozicije[ 0 ] = OdpriPozicijo( OP_SELL, ceneBravni[ 0 ], 0 ); braven = NEVELJAVNO; sraven = 0; return( S3 );
-  }  
-  // prehod v stanje S4 - Zakljucek
-  skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
-  if( skupniIzkupicek >= p )
-  {
-    for( i = 0; i < MAX_POZ; i++ )
-    {
-      if( bpozicije[ i ] == ZASEDENO ) { bpozicije[ i ] = PROSTO; }
-      if( bpozicije[ i ] != PROSTO )   
-      {
-        if( PozicijaZaprta( bpozicije[ i ] ) == false )
-        {
-          ZapriPozicijo( bpozicije[ i ] );
-        }
-      }
-    }
-    sporocilo = "M5-V"+verzija+":OBVESTILO: dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
-    braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
+    ZapriPozicijo(bpozicija);
+    skupniIzkupicek=skupniIzkupicek+vrednost;
+    sporocilo="M5-V"+verzija+":OBVESTILO: dosežen profitni cilj: "+Symbol()+" iteracija "+IntegerToString(n) + ".";
+    Print(sporocilo);
+    SendNotification(sporocilo);
+    return(S4);
   }
   
-  // dosežena je naslednja višja raven
-  if( Bid >= ceneBravni[ braven + 1 ] )
+  // ce se je sprozil stop loss, potem zabelezimo izkupicek in se vrnemo nazaj v stanje S1
+  if(PozicijaZaprta(bpozicija)==true)
   {
-    if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == false ) )
-    {
-      if( PostaviSL( bpozicije[ braven ], odmikSL ) == NAPAKA ) { DodajVVrsto( bpozicije[ braven ] ); } // ce nastavljanje SL na BE ni uspelo, dodamo id pozicije v vrsto za kasnejše ponastavljanje
-    }
-    if( bpozicije[ braven+1 ] == PROSTO ) { bpozicije[ braven + 1 ] = OdpriPozicijo( OP_BUY,  ceneSravni[ 0 ], braven + 1 ); }
-    braven++;
-    Print(  ":[", stevilkaIteracije, "]:", "Nova nakupna raven: ", braven, " @", DoubleToString( ceneBravni[ braven ], 5 ) );
+    skupniIzkupicek=skupniIzkupicek+vrednost;
+    return(S1);
   }
   
-  // cena pade pod trenutno raven
-  if( Bid <= ceneBravni[ braven ] )
-  {
-    if( bpozicije[ braven+1 ] == ZASEDENO ) { bpozicije[ braven+1 ] = PROSTO; }
-    if( ( bpozicije[ braven ] != PROSTO ) && ( bpozicije[ braven ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ braven ] ) == true ) )
-    { izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ braven ] ); bpozicije[ braven ] = ZASEDENO; }
-    if( braven > 0 ) { braven--; Print( ":[", stevilkaIteracije, "]:", "Nova nakupna raven: ", braven, " @", DoubleToString( ceneBravni[ braven ], 5 ) );  };
-  }
-  
-  // ce je bil pri eni od pozicij dosežen stop loss takoj popravimo izkupicek iteracije
-  for( i = 0; i < MAX_POZ; i++ )
-  {
-    if( ( bpozicije[ i ] != PROSTO ) && ( bpozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( bpozicije[ i ] ) == true ) )
-    {
-      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( bpozicije[ i ] ); bpozicije[ i ] = PROSTO;
-    }
-  }
+  // ce se ni zgodilo nic od zgoraj navedenega, ostanemo v tem stanju
   return( S2 );
 } // S2Nakup
 
-
-
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S3Prodaja()
-V tem stanju se znajdemo, ko je cena valutnega para dosegla osnovno raven za prodajo in velja sraven = 0 . V vsakem trenutku je odprta najmanj ena pozicija sell. V tem stanju
-spremljamo raven na kateri se nahajamo in ustrezno vzdržujemo odprte sell pozicije.  
+-------------------------
+V tem stanju imamo odprto prodajno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v končno stanje, v drugem primeru pa se
+vrnemo nazaj v stanje S1 in čakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S3Prodaja()
 {
-  int    i;         // števec  
-  string sporocilo; // string za sporocilo, ki ga pošljemo ob doseženem profitnem cilju
-  
-  // prehod v stanje S2 - Nakup
-  if( Bid >= ceneBravni[ 0 ] )
+  string sporocilo;  // niz za sestavljanje sporocila, ki ga posljemo na terminal ob doseženem profitnem cilju
+  double vrednost; // zacasna spremenljivka, ki hrani trenutno vrednost pozicije
+  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v končno stanje. Posljemo tudi sporocilo na terminal.
+  vrednost=VrednostPozicije(spozicija);
+  if(vrednost>=p)
   {
-    for( i = 0; i < MAX_POZ; i++ )
-    {
-      if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
-      if( spozicije[ i ] != PROSTO   )
-      {
-        if( PozicijaZaprta( spozicije[ i ] ) == false ) { ZapriPozicijo( spozicije[ i ] ); }
-        izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ i ] ); spozicije[ i ] = PROSTO;  
-      }
-    }
-    // ob prvem prehodu na drugo stran povečamo velikost pozicij. Ko smo faktorPovecanja enkrat porabili, ga postavimo na 1
-    L=L*faktorPovecanja;
-    p=p/faktorPovecanja;
-    faktorPovecanja=1;
-    bpozicije[ 0 ] = OdpriPozicijo( OP_BUY, ceneSravni[ 0 ], 0 ); sraven = NEVELJAVNO; braven = 0; return( S2 );
-  }
-  // prehod v stanje S4 - Zakljucek
-  skupniIzkupicek = izkupicekIteracije + VrednostOdprtihPozicij();
-  if( skupniIzkupicek >= p )
-  {
-    for( i = 0; i < MAX_POZ; i++ )
-    {
-      if( spozicije[ i ] == ZASEDENO ) { spozicije[ i ] = PROSTO; }
-      if( spozicije[ i ] != PROSTO   )
-      {
-        if( PozicijaZaprta( spozicije[ i ] ) == false )
-        {
-          ZapriPozicijo( spozicije[ i ] );  
-        }
-      }
-    }
-    sporocilo = "M5-V"+verzija+":OBVESTILO: Dosežen profitni cilj: " + Symbol() + " iteracija " + IntegerToString( stevilkaIteracije ) + ".";
-    braven = NEVELJAVNO; sraven = NEVELJAVNO; SendNotification( sporocilo ); ck = Bid; return( S4 );
-  }
-  // dosežena je naslednja višja raven
-  if( Ask <= ceneSravni[ sraven + 1 ] )
-  {
-    if( ( spozicije[ sraven ] != PROSTO ) && ( spozicije[ sraven ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ sraven ] ) == false ) )
-    {
-      if( PostaviSL( spozicije[ sraven ], odmikSL ) == NAPAKA ) { DodajVVrsto( spozicije[ sraven ] ); }; // ce postavljanje SL na BE ni bilo uspešno, dodamo pozicijo v vrsto za kasnejše ponastavljanje
-    }
-    if( spozicije[ sraven+1 ] == PROSTO ) { spozicije[ sraven + 1 ] = OdpriPozicijo( OP_SELL,  ceneBravni[ 0 ], sraven + 1 ); }
-    sraven++;
-    Print( ":[", stevilkaIteracije, "]:", "Nova prodajna raven: ", sraven, " @", DoubleToString( ceneSravni[ sraven ], 5 ) );
-  }
-  // cena pade pod trenutno raven
-  if( Ask >= ceneSravni[ sraven ] )
-  {
-    if( spozicije[ sraven+1 ] == ZASEDENO ) { spozicije[ sraven+1 ] = PROSTO; }
-    if( ( spozicije[ sraven ] != PROSTO ) && ( spozicije[ sraven ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ sraven ] ) == true ) )
-    { izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ sraven ] ); spozicije[ sraven ] = ZASEDENO; }
-    if( sraven > 0 ) { sraven--; Print( ":[", stevilkaIteracije, "]:", "Nova prodajna raven: ", sraven, " @", DoubleToString( ceneSravni[ sraven ], 5 ) ); }
-  }
-  // ce je bil pri eni od pozicij dosežen stop loss takoj popravimo izkupicek iteracije in oznacimo pozicijo eno raven višje kot prosto
-  for( i = 0; i < MAX_POZ; i++ )
-  {
-    if( ( spozicije[ i ] != PROSTO ) && ( spozicije[ i ] != ZASEDENO ) && ( PozicijaZaprta( spozicije[ i ] ) == true ) )
-    {
-      izkupicekIteracije = izkupicekIteracije + VrednostPozicije( spozicije[ i ] );
-      spozicije[ i ] = PROSTO;
-    }
+    ZapriPozicijo(spozicija);
+    skupniIzkupicek=skupniIzkupicek+vrednost;
+    sporocilo="M5-V"+verzija+":OBVESTILO: dosežen profitni cilj: "+Symbol()+" iteracija "+IntegerToString(n) + ".";
+    Print(sporocilo);
+    SendNotification(sporocilo);
+    return(S4);
   }
   
-  return( S3 );
+  // ce se je sprozil stop loss, potem zabelezimo izkupicek in se vrnemo nazaj v stanje S1
+  if(PozicijaZaprta(spozicija)==true)
+  {
+    skupniIzkupicek=skupniIzkupicek+vrednost;
+    return(S1);
+  }
+  
+  // ce se ni zgodilo nic od zgoraj navedenega, ostanemo v tem stanju
+  return(S3);
 } // S3Prodaja
-
-
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S4Zakljucek()
-V tem stanju se znajdemo, ko je bil dosežen profitni cilj. Ce je vrednost parametra samodejni zagon enaka NE, potem v tem stanju ostanemo, dokler uporabnik rocno ne prekine delovanja
-algoritma. Ce je vrednost parametra samodejni zagon enaka DA, potem ustrezno ponastavimo stanje algoritma in ga ponovno poženemo.
+V tem stanju se znajdemo, ko je bil dosežen profitni cilj. To je končno stanje.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S4Zakljucek()
 {
-  if( ( samodejniPonovniZagon > 0 ) && ( IzpolnjenPogojZaPonovniZagon() == true ) ) { cz = 0; n = 0; init(); return( S0 ); } else { return( S4 ); }
+  return(S4);
 } // S4Zakljucek
