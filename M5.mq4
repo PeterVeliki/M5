@@ -6,7 +6,6 @@
 * Copyright Peter Novak ml., M.Sc.                                                                                                                                                     *
 ****************************************************************************************************************************************************************************************
 */
-
 #property copyright "Peter Novak ml., M.Sc."
 #property link      "http://www.marlin.si"
 
@@ -15,30 +14,29 @@ extern double L=3; // Najvecja dovojena velikost pozicij v lotih;
 extern double p=0.00300; // Profitni cilj;
 extern double tveganje=3; // Tveganje v odstotkih - uporablja se za izracun velikosti pozicije (privzeto 3%).
 extern int    n=0; // Številka iteracije;
-extern double stoTock=0.00100; // razdalja sto točk (različna za 5 mestne pare in 3 mestne pare)
-extern double vrednostStoTock=0.009; // vrednost sto točk v EUR
+extern double stoTock=0.00100; // razdalja sto tock (razlicna za 5 mestne pare in 3 mestne pare)
+extern double vrednostStoTock=0.009; // vrednost sto tock v EUR
 extern double vstopnaCenaNakup; // Vstopna cena za nakup;
 extern double vstopnaCenaProdaja; // Vstopna cena za prodajo;
 
 // Globalne konstante ------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#define USPEH      -4   // oznaka za povratno vrednost pri uspešno izvedenem klicu funkcije;
-#define NAPAKA     -5   // oznaka za povratno vrednost pri neuspešno izvedenem klicu funkcije;
-#define S0          1   // oznaka za stanje S0 - Cakanje na zagon;
-#define S1          2   // oznaka za stanje S1 - Zacetno stanje;
-#define S2          3   // oznaka za stanje S2 - Nakup;
-#define S3          4   // oznaka za stanje S3 - Prodaja;
-#define S4          5   // oznaka za stanje S4 - Zakljucek;
+#define USPEH      -4 // oznaka za povratno vrednost pri uspešno izvedenem klicu funkcije;
+#define NAPAKA     -5 // oznaka za povratno vrednost pri neuspešno izvedenem klicu funkcije;
+#define S0          1 // oznaka za stanje S0 - Cakanje na zagon;
+#define S1          2 // oznaka za stanje S1 - Zacetno stanje;
+#define S2          3 // oznaka za stanje S2 - Nakup;
+#define S3          4 // oznaka za stanje S3 - Prodaja;
+#define S4          5 // oznaka za stanje S4 - Zakljucek;
 
 // Globalne spremenljivke --------------------------------------------------------------------------------------------------------------------------------------------------------------
 int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
 int spozicija; // Enolicna oznaka odprte prodajne pozicije;
 int stanje; // Trenutno stanje algoritma;
+int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v letu);
 int verzija=6; // Trenutna verzija algoritma;
 
 double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
 double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
-
-int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v letu);
 
 /*
 ****************************************************************************************************************************************************************************************
@@ -57,7 +55,7 @@ FUNKCIJA: deinit
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/   
 int deinit()
 {
-  return( USPEH );
+  return(USPEH);
 } // deinit
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -74,7 +72,7 @@ int init()
 {
   IzpisiPozdravnoSporocilo();
   PonastaviVrednostiPodatkovnihStruktur();
-  stanje=S0;
+  stanje=VzpostaviStanjeAlgoritma(n);
   return(USPEH);
 } // init
 
@@ -172,7 +170,7 @@ FUNKCIJA: IzracunajStopLossCeno(int smer)
 double IzracunajStopLossCeno(int smer)
 {
   int i=0; // zacasna spremenljivka, indeks s katerim se sprehajamo po polju preteklih vrednosti indikatorja iSAR
-  double stopLoss; // izračunana vrednost stop loss
+  double stopLoss; // izracunana vrednost stop loss
   
   switch(smer)
   {
@@ -215,7 +213,7 @@ double IzracunajStopLossCeno(int smer)
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: IzracunajVelikostPozicije(double tveganje, double razdalja)
 ---------------------------------------------------------------------
-(o) Funkcionalnost: glede na stanje na računu in podano tveganje v odstotkih izracuna velikost pozicije
+(o) Funkcionalnost: glede na stanje na racunu in podano tveganje v odstotkih izracuna velikost pozicije
 (o) Zaloga vrednosti: velikost pozicije
 (o) Vhodni parametri:
 (-) tveganje: tveganje izrazeno v odstotku stanja na racunu v primeru da je dosezen stop loss
@@ -249,7 +247,7 @@ double IzracunajVelikostPozicije(double tveganje, double razdalja)
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: NovDan()
 ----------------------------------------------------
-(o) Funkcionalnost: vrne true, če je napočil nov dan in false če ni.
+(o) Funkcionalnost: vrne true, ce je napocil nov dan in false ce ni.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 bool NovDan()
 {
@@ -340,7 +338,7 @@ int PostaviSL(int id, double cena)
     return(NAPAKA);
   }
   
-  // če je stop loss že nastavljen, potem ne naredimo nic, v nasprotnem primeru ga nastavimo
+  // ce je stop loss že nastavljen, potem ne naredimo nic, v nasprotnem primeru ga nastavimo
   if(OrderStopLoss()==cena)
   {
     return(USPEH);
@@ -383,7 +381,7 @@ bool PozicijaZaprta( int id )
 } // PozicijaZaprta
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-FUNKCIJA: VrednostPozicije( int id )
+FUNKCIJA: VrednostPozicije(int id)
 ------------------------------------
 (o) Funkcionalnost: Vrne vrednost pozicije z oznako id v tockah
 (o) Zaloga vrednosti: vrednost pozicije v tockah
@@ -399,11 +397,134 @@ double VrednostPozicije( int id )
   vrstaPozicije = OrderType();
   switch( vrstaPozicije )
   {
-    case OP_BUY : if( OrderCloseTime() == 0 ) { return( Bid - OrderOpenPrice() ); } else { return( OrderClosePrice() - OrderOpenPrice()  ); }
+    case OP_BUY: if( OrderCloseTime() == 0 ) { return( Bid - OrderOpenPrice() ); } else { return( OrderClosePrice() - OrderOpenPrice()  ); }
     case OP_SELL: if( OrderCloseTime() == 0 ) { return( OrderOpenPrice() - Ask ); } else { return(  OrderOpenPrice() - OrderClosePrice() ); }
-    default     : Print( "M5-V", verzija, ":[", n, "]:", ":VrednostPozicije:NAPAKA: Vrsta ukaza ni ne BUY ne SELL. Preveri pravilnost delovanja algoritma." ); return( 0 );
+    default: Print( "M5-V", verzija, ":[", n, "]:", ":VrednostPozicije:NAPAKA: Vrsta ukaza ni ne BUY ne SELL. Preveri pravilnost delovanja algoritma." ); return( 0 );
   }
 } // VrednostPozicije
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: VzpostaviStanjeAlgoritma(int stevilkaIteracije)
+---------------------------------------------------------
+(o) Funkcionalnost: Preveri ali ob zagonu algoritma obstaja kaksna pozicija, ki ustreza trenutni iteraciji:
+   (-) ne obstaja: gre za novo iteracijo, algoritem zacne od zacetka v stanju S0.
+   (-) obstaja vsaj ena pozicija, ki ustreza trenutni iteraciji, vendar nobena ni odprta. V tem primeru algoritem zacne v stanju S1.
+   (-) obstaja odprta pozicija, ki ustreza trenutni iteraciji. V tem primeru algoritem nadaljuje v stanju S2, ce je pozicija nakupna oziroma S3, ce je pozicija prodajna.
+(o) Zaloga vrednosti:
+   (-) stanje: S0, S1, S2, S3 ali S4. Stanje S4 vrnemo v primeru, da je prislo pri vzpostavljanju stanja do napake in algoritem raje ustavimo.
+(o) Vhodni parametri:
+   (-) stevilkaIteracije - stevilka trenutne iteracije
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
+{
+   int i; // Stevec za premikanje po zgodovini pozicij.
+   int j; // Stevec najdenih pozicij.
+   int idTrenutnePozicije; // Hrani id (ticket number) trenutne pozicije.
+   int steviloOdprtihPozicij; // Hrani stevilo odprtih pozicij in odprtih ukazov (pending orders), ki pa jih M5V6 ne uporablja.
+   int steviloZaprtihPozicij; // Hrani število zaprtih pozicij naloženih v zgodovini terminala.
+   
+   string oznakaTrenutnePozicije; // Hrani opis (comment) trenutne pozicije.
+   string oznakaIskanePozicije; // Hrani opis (comment), ki ustreza pozicijam trenutne iteracije.
+   
+   // Ustvarimo opis pozicij trenutne iteracije.
+   oznakaIskanePozicije="M5V6-"+IntegerToString(n);
+   Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: iscem pozicije z oznako ", oznakaIskanePozicije, ".");
+   
+   // Preverimo ali obstaja odprta pozicija
+   steviloOdprtihPozicij=OrdersTotal();
+   for(i=0; i<steviloOdprtihPozicij; i++)
+   {
+      // V primeru da pride do napake pri dostopu do podatkov odprte pozicije izpisemo samo opozorilo in nadaljujemo.
+      if(OrderSelect(i, SELECT_BY_POS)==false)
+      {
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: napaka pri dostopu do spiska odprtih pozicij.");
+         continue;
+      }
+      
+      // Preverimo ali se oznaka iskane pozicije ujema z oznako trenutne pozicije.
+      oznakaTrenutnePozicije=OrderComment();
+      if(StringFind(oznakaTrenutnePozicije, oznakaIskanePozicije, 0)>=0)
+      {
+         idTrenutnePozicije=OrderTicket();
+         switch(OrderType())
+         {
+            case OP_BUY:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: najdena NAKUPNA odprta pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije, ".");
+               bpozicija=idTrenutnePozicije;
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S2), ".");
+               return(S2);
+               break;
+            case OP_SELL:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: najdena PRODAJNA odprta pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije, ".");
+               spozicija=idTrenutnePozicije;
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S3), ".");
+               return(S3);
+               break;
+            default:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: najdena pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije, 
+                     " ni ne nakupna in ne prodajna, zato je ne bomo upostevali.");
+         }               
+      }
+   }
+   
+   // Preverimo ali obstaja zaprta pozicija
+   steviloZaprtihPozicij=OrdersHistoryTotal();	
+   j=0;
+   for(i=0; i<steviloZaprtihPozicij; i++)	
+   {	
+      // V primeru da pride do napake pri dostopu do podatkov zgodovine pozicij izpisemo samo opozorilo in nadaljujemo.
+      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY)==false)	
+      { 
+         Print( "M5-V", verzija, ":[", stevilkaIteracije, "]:VzpostaviStanjeAlgoritma: napaka pri dostopu do zgodovine pozicij." ); 
+         continue; 
+      }
+      
+      // Preverimo ali se oznaka pozicije ujema z oznako trenutne pozicije
+      oznakaTrenutnePozicije=OrderComment();
+      if(StringFind(oznakaTrenutnePozicije, oznakaIskanePozicije, 0)>=0)
+      {
+         idTrenutnePozicije=OrderTicket();
+         switch(OrderType())
+         {
+            case OP_BUY:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: najdena ZAPRTA NAKUPNA pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije, ".");
+               j++;
+               break;
+            case OP_SELL:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: najdena ZAPRTA PRODAJNA pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije, ".");
+               j++;
+               break;
+            default:
+               Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: najdena ZAPRTA pozicija ", idTrenutnePozicije, " z oznako ", oznakaTrenutnePozicije,
+                     " ni ne nakupna in ne prodajna, zato je ne bomo upostevali.");   
+         }
+      }
+   }
+   
+   // Izpisemo povzetek iskanja
+   if(j>0)
+   {
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: skupno stevilo najdenih zaprtih pozicij: ", j);
+      // Algoritem zazenemo samo v primeru da je trenutna cena znotraj intervala vstopnih cen 
+      if((Bid<=vstopnaCenaNakup)&&(Ask>=vstopnaCenaProdaja))
+      {
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S1), ".");
+         return(S1);
+      }
+      else
+      {
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: trenutna cena je izven intervala vstopnih cen zato algoritma ni mogoce pognati.");
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S4), ".");
+         return(S4);
+      }
+   }
+   else
+   {
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: ni bilo najdenih pozicij z oznako ", oznakaIskanePozicije, ", zacenjam novo iteracijo.");
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S0), ".");
+      return(S0);
+   }
+} // VzpostaviStanjeAlgoritma
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: ZapriPozicijo( int id )
@@ -483,15 +604,15 @@ int S1ZacetnoStanje()
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S2Nakup()
 -----------------------
-V tem stanju imamo odprto nakupno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v končno stanje, v drugem primeru pa se
-vrnemo nazaj v stanje S1 in čakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
+V tem stanju imamo odprto nakupno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v koncno stanje, v drugem primeru pa se
+vrnemo nazaj v stanje S1 in cakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S2Nakup()
 {
   string sporocilo;  // niz za sestavljanje sporocila, ki ga posljemo na terminal ob doseženem profitnem cilju
   double vrednost; // zacasna spremenljivka, ki hrani trenutno vrednost pozicije
   
-  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v končno stanje. Posljemo tudi sporocilo na terminal.
+  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v koncno stanje. Posljemo tudi sporocilo na terminal.
   vrednost=VrednostPozicije(bpozicija);
   if(vrednost>=p)
   {
@@ -511,20 +632,20 @@ int S2Nakup()
   }
   
   // ce se ni zgodilo nic od zgoraj navedenega, ostanemo v tem stanju
-  return( S2 );
+  return(S2);
 } // S2Nakup
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S3Prodaja()
 -------------------------
-V tem stanju imamo odprto prodajno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v končno stanje, v drugem primeru pa se
-vrnemo nazaj v stanje S1 in čakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
+V tem stanju imamo odprto prodajno pozicijo in cakamo, da bo bodisi dosezen profitni cilj ali pa se bo sprožil stop loss. V prvem primeru gremo v koncno stanje, v drugem primeru pa se
+vrnemo nazaj v stanje S1 in cakamo na morebitno novo priložnost za vstop v isti ali v nasprotni smeri.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S3Prodaja()
 {
   string sporocilo;  // niz za sestavljanje sporocila, ki ga posljemo na terminal ob doseženem profitnem cilju
   double vrednost; // zacasna spremenljivka, ki hrani trenutno vrednost pozicije
-  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v končno stanje. Posljemo tudi sporocilo na terminal.
+  // ce je dosezen profitni cilj, zapremo odprto pozicijo in gremo v koncno stanje. Posljemo tudi sporocilo na terminal.
   vrednost=VrednostPozicije(spozicija);
   if(vrednost>=p)
   {
@@ -549,7 +670,7 @@ int S3Prodaja()
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S4Zakljucek()
-V tem stanju se znajdemo, ko je bil dosežen profitni cilj. To je končno stanje.
+V tem stanju se znajdemo, ko je bil dosežen profitni cilj. To je koncno stanje.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S4Zakljucek()
 {
