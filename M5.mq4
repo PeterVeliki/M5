@@ -12,12 +12,13 @@
 // Vhodni parametri --------------------------------------------------------------------------------------------------------------------------------------------------------------------
 extern double L=3; // Najvecja dovojena velikost pozicij v lotih;
 extern double p=0.00300; // Profitni cilj;
-extern double tveganje=3; // Tveganje v odstotkih - uporablja se za izracun velikosti pozicije (privzeto 3%).
+extern double tveganje=5; // Tveganje v odstotkih - uporablja se za izracun velikosti pozicije (privzeto 3%).
 extern int    n=0; // Številka iteracije;
 extern double stoTock=0.00100; // razdalja sto tock (razlicna za 5 mestne pare in 3 mestne pare)
 extern double vrednostStoTock=0.009; // vrednost sto tock v EUR
 extern double vstopnaCenaNakup; // Vstopna cena za nakup;
 extern double vstopnaCenaProdaja; // Vstopna cena za prodajo;
+extern int danZagona=1; // Zaporedna številka dneva v mesecu na katerega je bil algoritem s to številko iteracije prvič pognan.
 
 // Globalne konstante ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #define USPEH      -4 // oznaka za povratno vrednost pri uspešno izvedenem klicu funkcije;
@@ -32,8 +33,8 @@ extern double vstopnaCenaProdaja; // Vstopna cena za prodajo;
 int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
 int spozicija; // Enolicna oznaka odprte prodajne pozicije;
 int stanje; // Trenutno stanje algoritma;
-int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v letu);
-int verzija=6; // Trenutna verzija algoritma;
+int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v mesecu);
+int verzija=7; // Trenutna verzija algoritma;
 
 double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
 double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
@@ -72,6 +73,11 @@ int init()
 {
   IzpisiPozdravnoSporocilo();
   PonastaviVrednostiPodatkovnihStruktur();
+  
+  // Samodejno polnjenje cen vstopa, samo za testiranje. Obvezno zakomentiraj spodnji dve vrstici pred produkcijsko uporabo.
+  // vstopnaCenaNakup=iHigh(NULL, PERIOD_D1, 1);
+  // vstopnaCenaProdaja=iLow(NULL, PERIOD_D1, 1);
+  
   stanje=VzpostaviStanjeAlgoritma(n);
   return(USPEH);
 } // init
@@ -251,9 +257,9 @@ FUNKCIJA: NovDan()
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 bool NovDan()
 {
-  if(trenutniDan!=TimeDayOfYear(TimeCurrent()))
+  if(trenutniDan!=TimeDay(TimeCurrent()))
   {
-    trenutniDan=TimeDayOfYear(TimeCurrent());
+    trenutniDan=TimeDay(TimeCurrent());
     return(true);
   }
   else
@@ -311,7 +317,7 @@ int PonastaviVrednostiPodatkovnihStruktur()
 {
   skupniIzkupicek=0;
   maxIzpostavljenost=0;
-  trenutniDan=TimeDayOfYear(TimeCurrent());
+  trenutniDan=TimeDay(TimeCurrent());
   return(USPEH);
 } // PonastaviVrednostiPodatkovnihStruktur
 
@@ -407,7 +413,7 @@ double VrednostPozicije( int id )
 FUNKCIJA: VzpostaviStanjeAlgoritma(int stevilkaIteracije)
 ---------------------------------------------------------
 (o) Funkcionalnost: Preveri ali ob zagonu algoritma obstaja kaksna pozicija, ki ustreza trenutni iteraciji:
-   (-) ne obstaja: gre za novo iteracijo, algoritem zacne od zacetka v stanju S0.
+   (-) ne obstaja: gre za novo iteracijo, algoritem zacne od zacetka v stanju S0 ali S1 (odvisno od tega ali je trenutniDan razlicen od vrednosti danZagona).
    (-) obstaja vsaj ena pozicija, ki ustreza trenutni iteraciji, vendar nobena ni odprta. V tem primeru algoritem zacne v stanju S1.
    (-) obstaja odprta pozicija, ki ustreza trenutni iteraciji. V tem primeru algoritem nadaljuje v stanju S2, ce je pozicija nakupna oziroma S3, ce je pozicija prodajna.
 (o) Zaloga vrednosti:
@@ -501,8 +507,8 @@ int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
       }
    }
    
-   // Izpisemo povzetek iskanja
-   if(j>0)
+   // Izpisemo povzetek iskanja zaprtih pozicij
+   if(j>0) 
    {
       Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: skupno stevilo najdenih zaprtih pozicij: ", j);
       // Algoritem zazenemo samo v primeru da je trenutna cena znotraj intervala vstopnih cen 
@@ -518,11 +524,28 @@ int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
          return(S4);
       }
    }
+   
+   // Če smo prišli do sem, ni bilo najdene nobene odprte in nobene zaprte pozicije. Glede na danZagona, nadaljujemo v stanju S0 ali S1, ce je cena znotraj intervala vstopnih cen.
+   Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: ni bilo najdenih odprtih ali zaprtih pozicij z oznako ", oznakaIskanePozicije, ".");
+   Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: Algoritem je bil zagnan na dan ", danZagona, ", danes je dan ", trenutniDan, "."); 
+   if((Bid<=vstopnaCenaNakup)&&(Ask>=vstopnaCenaProdaja))
+   {
+      if(danZagona==trenutniDan)
+      {
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: iteracijo nadaljujem v stanju ", ImeStanja(S0), ".");
+         return(S0);   
+      }
+      else
+      {      
+         Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: iteracijo nadaljujem v stanju ", ImeStanja(S1), ".");
+         return(S1);
+      }
+   }
    else
    {
-      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: ni bilo najdenih pozicij z oznako ", oznakaIskanePozicije, ", zacenjam novo iteracijo.");
-      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S0), ".");
-      return(S0);
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: trenutna cena je izven intervala vstopnih cen zato algoritma ni mogoce pognati.");
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S4), ".");
+      return(S4);
    }
 } // VzpostaviStanjeAlgoritma
 
