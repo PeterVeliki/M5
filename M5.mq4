@@ -433,7 +433,7 @@ int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
    string oznakaIskanePozicije; // Hrani opis (comment), ki ustreza pozicijam trenutne iteracije.
    
    // Ustvarimo opis pozicij trenutne iteracije.
-   oznakaIskanePozicije="M5V6-"+IntegerToString(n);
+   oznakaIskanePozicije="M5V"+IntegerToString(verzija)+"-"+IntegerToString(n);
    Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: iscem pozicije z oznako ", oznakaIskanePozicije, ".");
    
    // Preverimo ali obstaja odprta pozicija
