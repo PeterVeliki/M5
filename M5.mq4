@@ -18,7 +18,7 @@ extern double stoTock=0.00100; // razdalja sto tock (razlicna za 5 mestne pare i
 extern double vrednostStoTock=0.009; // vrednost sto tock v EUR
 extern double vstopnaCenaNakup; // Vstopna cena za nakup;
 extern double vstopnaCenaProdaja; // Vstopna cena za prodajo;
-extern int danZagona=1; // Zaporedna številka dneva v mesecu na katerega je bil algoritem s to številko iteracije prvič pognan.
+extern int danZagona=1; // Zaporedna številka dneva v mesecu na katerega je bil algoritem s to številko iteracije prvic pognan.
 
 // Globalne konstante ------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #define USPEH      -4 // oznaka za povratno vrednost pri uspešno izvedenem klicu funkcije;
@@ -28,13 +28,14 @@ extern int danZagona=1; // Zaporedna številka dneva v mesecu na katerega je bil
 #define S2          3 // oznaka za stanje S2 - Nakup;
 #define S3          4 // oznaka za stanje S3 - Prodaja;
 #define S4          5 // oznaka za stanje S4 - Zakljucek;
+#define S5          6 // oznaka za stanje S5 - ZapolnitevVrzeli
 
 // Globalne spremenljivke --------------------------------------------------------------------------------------------------------------------------------------------------------------
 int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
 int spozicija; // Enolicna oznaka odprte prodajne pozicije;
 int stanje; // Trenutno stanje algoritma;
 int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v mesecu);
-int verzija=7; // Trenutna verzija algoritma;
+int verzija=8; // Trenutna verzija algoritma;
 
 double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
 double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
@@ -99,6 +100,7 @@ int start()
     case S2: stanje=S2Nakup(); break;
     case S3: stanje=S3Prodaja(); break;
     case S4: stanje=S4Zakljucek(); break;
+    case S5: stanje=S5ZapolnitevVrzeli(); break;
     default: Print( "M5-V", verzija, ":[", n, "]:", ":start:OPOZORILO: Stanje ", stanje, " ni veljavno stanje - preveri pravilnost delovanja algoritma." );
   }
   // ce je prišlo do prehoda med stanji izpišemo obvestilo
@@ -146,6 +148,7 @@ string ImeStanja(int KodaStanja)
     case S2: return("S2 - NAKUP");
     case S3: return("S3 - PRODAJA");
     case S4: return("S4 - ZAKLJUCEK");
+    case S5: return("S5 - ZAPOLNITEV VRZELI");
     default: Print ("M5-V", verzija, ":[", n, "]:", ":ImeStanja:OPOZORILO: Koda stanja ", KodaStanja, " ni prepoznana. Preveri pravilnost delovanja algoritma.");
   }
   return( NAPAKA );
@@ -161,7 +164,7 @@ FUNKCIJA: IzpisiPozdravnoSporocilo
 int IzpisiPozdravnoSporocilo()
 {
   Print("****************************************************************************************************************");
-  Print("Dober dan. Tukaj M5, verzija ", verzija, "." );
+  Print("Dober dan. Tukaj M5, verzija ", verzija, ", iteracija ", n, "." );
   Print("****************************************************************************************************************");
   return(USPEH);
 } // IzpisiPozdravnoSporocilo
@@ -251,8 +254,45 @@ double IzracunajVelikostPozicije(double tveganje, double razdalja)
 } // IzracunajVelikostPozicije
 
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA: IzvediKorekcijoCene()
+-------------------------------
+(o) Funkcionalnost: preveri ali se dejanska najvisja in najnizja cena na dan zagona algoritma ujemata z vstopnima cenama podanima kot parametra algoritma. V primeru da je najvisja visja
+od cene za vstop v nakup ali najnizja nizja od cene za vstop v prodajo, ju popravimo.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+bool IzvediKorekcijoCene()
+{
+   int i; // stevec
+   double najvisjaCena; // Dejanska najvisja cena.
+   double najnizjaCena; // Dejanska najnizja cena.
+   
+   i=0;
+   while(TimeDay(iTime(NULL, PERIOD_D1, i))!=danZagona)
+   {
+      i++;
+   }
+   najvisjaCena=iHigh(NULL, PERIOD_D1, i);
+   najnizjaCena=iLow(NULL, PERIOD_D1, i);
+   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najvisja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, i), TIME_DATE), " je ", DoubleToString(najvisjaCena, 5),
+          " podana cena za vstop v nakup je ", DoubleToString(vstopnaCenaNakup, 5), ".");
+   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najnizja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, i), TIME_DATE), " je ", DoubleToString(najnizjaCena, 5),
+          " podana cena za vstop v prodajo je ", DoubleToString(vstopnaCenaProdaja, 5), ".");  
+   if(najvisjaCena>vstopnaCenaNakup)
+   {
+      vstopnaCenaNakup=najvisjaCena;
+      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v nakup je KORIGIRANA navzgor."); 
+   }
+   if(najnizjaCena<vstopnaCenaProdaja)
+   {
+      vstopnaCenaProdaja=najnizjaCena;
+      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v prodajo je KORIGIRANA navzdol."); 
+   }
+   return(true);
+} // IzvediKorekcijoCene
+
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: NovDan()
-----------------------------------------------------
+------------------
 (o) Funkcionalnost: vrne true, ce je napocil nov dan in false ce ni.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 bool NovDan()
@@ -525,7 +565,7 @@ int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
       }
    }
    
-   // Če smo prišli do sem, ni bilo najdene nobene odprte in nobene zaprte pozicije. Glede na danZagona, nadaljujemo v stanju S0 ali S1, ce je cena znotraj intervala vstopnih cen.
+   // Ce smo prišli do sem, ni bilo najdene nobene odprte in nobene zaprte pozicije. Glede na danZagona, nadaljujemo v stanju S0 ali S1, ce je cena znotraj intervala vstopnih cen.
    Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: ni bilo najdenih odprtih ali zaprtih pozicij z oznako ", oznakaIskanePozicije, ".");
    Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: Algoritem je bil zagnan na dan ", danZagona, ", danes je dan ", trenutniDan, "."); 
    if((Bid<=vstopnaCenaNakup)&&(Ask>=vstopnaCenaProdaja))
@@ -543,9 +583,10 @@ int VzpostaviStanjeAlgoritma(int stevilkaIteracije)
    }
    else
    {
-      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:OPOZORILO: trenutna cena je izven intervala vstopnih cen zato algoritma ni mogoce pognati.");
-      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO: nadaljujem v stanju ", ImeStanja(S4), ".");
-      return(S4);
+      Print("M5-V", verzija, ":[", n, "]:VzpostaviStanjeAlgoritma:INFO:Trenutna cena (bid: ", DoubleToString(Bid, 5), ", ask: ", DoubleToString(Ask, 5), 
+            ") je izven obmocja prejsnje svece (meja zgoraj: ", DoubleToString(vstopnaCenaNakup, 5), ", meja spodaj: ", DoubleToString(vstopnaCenaProdaja, 5),
+            "). Cakam, da se cena vrne v obmocje.");
+      return(S5);
    }
 } // VzpostaviStanjeAlgoritma
 
@@ -589,7 +630,22 @@ int S0CakanjeNaZagon()
 {
   if(NovDan()==true) // ce je nastopil nov dan, potem gremo naprej v zacetno stanje
   {
-    return(S1);
+    // preveri ali je potrebna korekcija cene glede na dan zagona
+    IzvediKorekcijoCene();
+    
+    // ce je trenutna cena izven obmocja prejsnje svece, gremo v stanje S5ZapolnitevVrzeli
+    if((Bid>vstopnaCenaNakup)||(Ask<vstopnaCenaProdaja))
+    {
+      Print("M5-V", verzija, ":[", n, "]:S0CakanjeNaZagon:OBVESTILO:Trenutna cena (bid: ", DoubleToString(Bid, 5), ", ask: ", DoubleToString(Ask, 5), 
+            ") je izven obmocja prejsnje svece (meja zgoraj: ", DoubleToString(vstopnaCenaNakup, 5), ", meja spodaj: ", DoubleToString(vstopnaCenaProdaja, 5),
+            "). Cakam, da se cena vrne v obmocje.");
+      return(S5);
+    }
+    else
+    // cena je znotraj obmocja, gremo v zacetno stanje
+    {
+      return(S1);
+    }
   }
   else  // v nasprotnem primeru ostanemo v tem stanju
   {
@@ -699,3 +755,27 @@ int S4Zakljucek()
 {
   return(S4);
 } // S4Zakljucek
+
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FUNKCIJA DKA: S5ZapolnitevVrzeli()
+V tem stanju se znajdemo, kadar ni odprta nobena pozicija, trenutna cena pa se nahaja izven obmocja prejsnje svece (bodisi visja od vstopne cene za nakup bodisi nizja od vstopne cene
+za prodajo). V tem stanju cakamo da se cena vrne nazaj v obmocje prejsnje svece. Kriterij za vrnitev je, da je cena zaprtja ene od svec znotraj obmocja.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+int S5ZapolnitevVrzeli()
+{
+   double cenaZaprtja; // Cena zaprtja prejsnje svece.
+   
+   cenaZaprtja=iClose(NULL, PERIOD_M15, 1);
+   if((cenaZaprtja<vstopnaCenaNakup)&&(cenaZaprtja>vstopnaCenaProdaja)&&(Bid>vstopnaCenaProdaja)&&(Ask<vstopnaCenaNakup)) 
+   {
+      Print("M5-V", verzija, ":[", n, "]:S5ZapolnitevVrzeli:OBVESTILO:Trenutna cena (bid: ", DoubleToString(Bid, 5), ", ask: ", DoubleToString(Ask, 5), 
+            ") je zdaj znotraj obmocja prejsnje svece (meja zgoraj: ", DoubleToString(vstopnaCenaNakup, 5), ", meja spodaj: ", DoubleToString(vstopnaCenaProdaja, 5),
+            "), nadaljujemo s trgovanjem.");
+      return(S1);
+  }
+  else  
+  // dokler smo izven intervala med obema vstopnima cenama, ostajamo v tem stanju
+  {
+      return(S5);
+  }
+} // S5ZapolnitevVrzeli
