@@ -76,8 +76,8 @@ int init()
   PonastaviVrednostiPodatkovnihStruktur();
   
   // Samodejno polnjenje cen vstopa, samo za testiranje. Obvezno zakomentiraj spodnji dve vrstici pred produkcijsko uporabo.
-  vstopnaCenaNakup=iHigh(NULL, PERIOD_D1, 1);
-  vstopnaCenaProdaja=iLow(NULL, PERIOD_D1, 1);
+  // vstopnaCenaNakup=iHigh(NULL, PERIOD_D1, 1);
+  // vstopnaCenaProdaja=iLow(NULL, PERIOD_D1, 1);
   
   stanje=VzpostaviStanjeAlgoritma(n);
   return(USPEH);
