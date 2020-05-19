@@ -35,7 +35,7 @@ int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
 int spozicija; // Enolicna oznaka odprte prodajne pozicije;
 int stanje; // Trenutno stanje algoritma;
 int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v mesecu);
-int verzija=8; // Trenutna verzija algoritma;
+int verzija=9; // Trenutna verzija algoritma;
 
 double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
 double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
@@ -76,8 +76,8 @@ int init()
   PonastaviVrednostiPodatkovnihStruktur();
   
   // Samodejno polnjenje cen vstopa, samo za testiranje. Obvezno zakomentiraj spodnji dve vrstici pred produkcijsko uporabo.
-  // vstopnaCenaNakup=iHigh(NULL, PERIOD_D1, 1);
-  // vstopnaCenaProdaja=iLow(NULL, PERIOD_D1, 1);
+  vstopnaCenaNakup=iHigh(NULL, PERIOD_D1, 1);
+  vstopnaCenaProdaja=iLow(NULL, PERIOD_D1, 1);
   
   stanje=VzpostaviStanjeAlgoritma(n);
   return(USPEH);
@@ -178,39 +178,56 @@ FUNKCIJA: IzracunajStopLossCeno(int smer)
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 double IzracunajStopLossCeno(int smer)
 {
-  int i=0; // zacasna spremenljivka, indeks s katerim se sprehajamo po polju preteklih vrednosti indikatorja iSAR
+  int i=0; // indeks s katerim se sprehajamo po polju preteklih vrednosti indikatorja iSAR
+  int dan=TimeDay(Time[0]); // stevilka danasnjega dneva v mesecu - da vemo kdaj smo prisli do preteklega dne 
   double stopLoss; // izracunana vrednost stop loss
   
   switch(smer)
   {
     case OP_BUY:
-      // dokler je trenutna vrednost indikatorja nad ceno se pomikamo v preteklost, do prve vrednosti, ki je pod ceno
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>=High[i])
+      // na zacetku je stop loss low danasnje dnevne svece
+      stopLoss=iLow(NULL, PERIOD_D1, 0);
+      // dokler je trenutna vrednost indikatorja znotraj danasnjega dne, se pomikamo v preteklost
+      while(dan==TimeDay(Time[i]))
+      {
+        if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<stopLoss)
+        {
+            stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i);
+        }
+        i++;
+      }
+      // ko smo prisli do zacetka dneva, preverimo ali je vrednost indikatorja pod ceno. Če je, se pomikamo naprej v preteklost dokler se indikator spet ne preseli nad ceno. Zadnja vrednost pod ceno je nas stop loss.
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<Low[i])
       {
         i++;
       }
-      // ko smo našli prvo vrednost pod ceno, se ponovno pomikamo v preteklost dokler se indikator spet ne preseli nad ceno. Zadnja vrednost pod ceno je nas stop loss.
-      do
+      if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1)<stopLoss)
       {
-        i++;
+         stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
       }
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<=Low[i]);
-      stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
       Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Nakupna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
       return(stopLoss);
     case OP_SELL:
-      // dokler je trenutna vrednost indikatorja pod ceno se pomikamo v preteklost, do prve vrednosti, ki je nad ceno
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<=Low[i])
+      // na zacetku je stop loss high danasnje dnevne svece
+      stopLoss=iHigh(NULL, PERIOD_D1, 0);
+      // dokler je trenutna vrednost indikatorja znotraj danasnjega dne, se pomikamo v preteklost
+      while(dan==TimeDay(Time[i]))
+      {
+        if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>stopLoss)
+        {
+            stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i);
+        }
+        i++;
+      }
+      // ko smo prisli do zacetka dneva, preverimo ali je vrednost indikatorja nad ceno. Če je, se pomikamo naprej v preteklost dokler se indikator spet ne preseli pod ceno. Zadnja vrednost nad ceno je nas stop loss.
+      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>High[i])
       {
         i++;
       }
-      // ko smo našli prvo vrednost nad ceno, se ponovno pomikamo v preteklost dokler se indikator spet ne preseli pod ceno. Zadnja vrednost nad ceno je nas stop loss.
-      do
+      if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1)>stopLoss)
       {
-        i++;
+         stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
       }
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>=High[i]);
-      stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
       Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Prodajna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
       return(stopLoss);
     default:
