@@ -35,7 +35,7 @@ int bpozicija; // Enolicna oznaka odprte nakupne pozicije;
 int spozicija; // Enolicna oznaka odprte prodajne pozicije;
 int stanje; // Trenutno stanje algoritma;
 int trenutniDan; // Hrani trenutni dan (zaporedno stevilko dneva v mesecu);
-int verzija=9; // Trenutna verzija algoritma;
+int verzija=10; // Trenutna verzija algoritma;
 
 double maxIzpostavljenost; // Najvecja izguba algoritma (minimum od izkupickaIteracije);
 double skupniIzkupicek; // Hrani trenutni skupni izkupicek trenutne iteracije, vkljucno z vrednostjo trenutno odprtih pozicij;
@@ -172,64 +172,24 @@ int IzpisiPozdravnoSporocilo()
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA: IzracunajStopLossCeno(int smer)
 -----------------------------------------
-(o) Funkcionalnost: izracuna stop loss z uporabo indikatorja Parabolic SAR.
+(o) Funkcionalnost: izracuna stop loss ceno. V nižjih verzijah algoritma smo ceno izracunavali z uporabo indikatorja parabolic SAR, a se na dolgi rok kaze, da so stop loss-i pogosto
+    postavljeni preblizu in slabo vplivajo na profitabilnost algoritma. Zato sem se odlocil, da stop loss ponovno zacnemo postavljat na high ali low svece pred vstopom. Tako lahko za
+    izracun stop loss cene uporabimo kar vhodna parametra vstopnaCenaNakup in vstopnaCenaProdaja.
 (o) Zaloga vrednosti: cena pri kateri bomo postavili SL.
 (o) Vhodni parametri: smer, možni sta dve vrednosti: OP_BUY ali OP_SELL.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 double IzracunajStopLossCeno(int smer)
 {
-  int i=0; // indeks s katerim se sprehajamo po polju preteklih vrednosti indikatorja iSAR
-  int dan=TimeDay(Time[0]); // stevilka danasnjega dneva v mesecu - da vemo kdaj smo prisli do preteklega dne 
   double stopLoss; // izracunana vrednost stop loss
   
   switch(smer)
   {
     case OP_BUY:
-      // na zacetku je stop loss low danasnje dnevne svece
-      stopLoss=iLow(NULL, PERIOD_D1, 0);
-      // dokler je trenutna vrednost indikatorja znotraj danasnjega dne, se pomikamo v preteklost
-      while(dan==TimeDay(Time[i]))
-      {
-        if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<stopLoss)
-        {
-            stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i);
-        }
-        i++;
-      }
-      // ko smo prisli do zacetka dneva, preverimo ali je vrednost indikatorja pod ceno. Če je, se pomikamo naprej v preteklost dokler se indikator spet ne preseli nad ceno. Zadnja vrednost pod ceno je nas stop loss.
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)<Low[i])
-      {
-        i++;
-      }
-      if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1)<stopLoss)
-      {
-         stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
-      }
       Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Nakupna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
-      return(stopLoss);
+      return(vstopnaCenaProdaja);
     case OP_SELL:
-      // na zacetku je stop loss high danasnje dnevne svece
-      stopLoss=iHigh(NULL, PERIOD_D1, 0);
-      // dokler je trenutna vrednost indikatorja znotraj danasnjega dne, se pomikamo v preteklost
-      while(dan==TimeDay(Time[i]))
-      {
-        if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>stopLoss)
-        {
-            stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i);
-        }
-        i++;
-      }
-      // ko smo prisli do zacetka dneva, preverimo ali je vrednost indikatorja nad ceno. Če je, se pomikamo naprej v preteklost dokler se indikator spet ne preseli pod ceno. Zadnja vrednost nad ceno je nas stop loss.
-      while(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i)>High[i])
-      {
-        i++;
-      }
-      if(iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1)>stopLoss)
-      {
-         stopLoss=iSAR(NULL, PERIOD_M15, 0.02, 0.2, i-1);
-      }
       Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:INFO: Prodajna stop loss cena: ", DoubleToString(stopLoss, 5), ".");
-      return(stopLoss);
+      return(vstopnaCenaNakup);
     default:
       Print("M5-V", verzija, ":[", n, "]:", "IzracunajStopLossCeno:NAPAKA: Nepricakovana smer - preveri pravilnost delovanja algoritma.");
       return(0);
@@ -278,30 +238,26 @@ od cene za vstop v nakup ali najnizja nizja od cene za vstop v prodajo, ju popra
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 bool IzvediKorekcijoCene()
 {
-   int i; // stevec
-   double najvisjaCena; // Dejanska najvisja cena.
-   double najnizjaCena; // Dejanska najnizja cena.
-   
-   i=0;
-   while(TimeDay(iTime(NULL, PERIOD_D1, i))!=danZagona)
-   {
-      i++;
-   }
-   najvisjaCena=iHigh(NULL, PERIOD_D1, i);
-   najnizjaCena=iLow(NULL, PERIOD_D1, i);
-   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najvisja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, i), TIME_DATE), " je ", DoubleToString(najvisjaCena, 5),
+   // Zabelezimo dejanska ekstrema prejsnje svece. 
+   double najvisjaCena=iHigh(NULL, PERIOD_D1, 1);
+   double najnizjaCena=iLow(NULL, PERIOD_D1, 1);
+ 
+   // Izpisemo obvestilo o cenah.
+   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najvisja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, 1), TIME_DATE), " je ", DoubleToString(najvisjaCena, 5),
           " podana cena za vstop v nakup je ", DoubleToString(vstopnaCenaNakup, 5), ".");
-   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najnizja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, i), TIME_DATE), " je ", DoubleToString(najnizjaCena, 5),
+   Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Najnizja cena na dan ", TimeToString(iTime(NULL, PERIOD_D1, 1), TIME_DATE), " je ", DoubleToString(najnizjaCena, 5),
           " podana cena za vstop v prodajo je ", DoubleToString(vstopnaCenaProdaja, 5), ".");  
+  
+   // Ce je potrebno, izvedemo korekcijo cene.
    if(najvisjaCena>vstopnaCenaNakup)
    {
       vstopnaCenaNakup=najvisjaCena;
-      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v nakup je KORIGIRANA navzgor."); 
+      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v nakup je KORIGIRANA navzgor in je: ", DoubleToString(vstopnaCenaNakup, 5),"."); 
    }
    if(najnizjaCena<vstopnaCenaProdaja)
    {
       vstopnaCenaProdaja=najnizjaCena;
-      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v prodajo je KORIGIRANA navzdol."); 
+      Print("M5-V", verzija, ":[", n, "]:", "KorekcijaCene:INFO: Podana cena za vstop v prodajo je KORIGIRANA navzdol in je: ", DoubleToString(vstopnaCenaProdaja, 5), "."); 
    }
    return(true);
 } // IzvediKorekcijoCene
@@ -776,13 +732,13 @@ int S4Zakljucek()
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 FUNKCIJA DKA: S5ZapolnitevVrzeli()
 V tem stanju se znajdemo, kadar ni odprta nobena pozicija, trenutna cena pa se nahaja izven obmocja prejsnje svece (bodisi visja od vstopne cene za nakup bodisi nizja od vstopne cene
-za prodajo). V tem stanju cakamo da se cena vrne nazaj v obmocje prejsnje svece. Kriterij za vrnitev je, da je cena zaprtja ene od svec znotraj obmocja.
+za prodajo). V tem stanju cakamo da se cena vrne nazaj v obmocje prejsnje svece. Kriterij za vrnitev je, da je cena zaprtja ene od urnih svec znotraj obmocja.
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 int S5ZapolnitevVrzeli()
 {
    double cenaZaprtja; // Cena zaprtja prejsnje svece.
    
-   cenaZaprtja=iClose(NULL, PERIOD_M15, 1);
+   cenaZaprtja=iClose(NULL, PERIOD_H1, 1);
    if((cenaZaprtja<vstopnaCenaNakup)&&(cenaZaprtja>vstopnaCenaProdaja)&&(Bid>vstopnaCenaProdaja)&&(Ask<vstopnaCenaNakup)) 
    {
       Print("M5-V", verzija, ":[", n, "]:S5ZapolnitevVrzeli:OBVESTILO:Trenutna cena (bid: ", DoubleToString(Bid, 5), ", ask: ", DoubleToString(Ask, 5), 
